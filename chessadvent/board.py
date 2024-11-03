@@ -10,12 +10,20 @@ class Square(NamedTuple):
     CHAR_NORMAL = '.'
     CHAR_ENTER = 'E'
     CHAR_EXIT = 'X'
-    CHARS = CHAR_NORMAL + CHAR_ENTER + CHAR_EXIT
+    CHAR_BACKSLASH = '\\'
+    CHAR_SLASH = '/'
+    CHAR_HYPHEN = '-'
+    CHAR_PIPE = '|'
+    CHARS = (
+        CHAR_NORMAL + CHAR_ENTER + CHAR_EXIT
+        + CHAR_BACKSLASH + CHAR_SLASH
+        + CHAR_HYPHEN + CHAR_PIPE
+    )
 
     @property
     def solid(self) -> bool:
         """If solid, pieces cannot go on top of this square"""
-        return False
+        return self.char != self.CHAR_NORMAL
 
 
 class Board:
@@ -51,20 +59,46 @@ class Board:
     def print_simple(self):
         print(self.render_simple())
 
-    def resize(self, add_w: int = 0, add_h: int = 0):
-        self.w += add_w
-        self.h += add_h
+    def scroll(self, addx: int, addy: int):
+        w = self.w
+        h = self.h
+        addx = addx % w
+        addy = addy % h
+
+        pieces_lines = [None] * h
+        squares_lines = [None] * h
+        for y in range(h):
+            i0 = y * w
+            i1 = i0 + w - addx
+            i2 = i0 + w
+            y1 = (y + addy) % h
+            pieces_lines[y1] = self.pieces[i1:i2] + self.pieces[i0:i1]
+            squares_lines[y1] = self.squares[i1:i2] + self.squares[i0:i1]
+
+        self.pieces = []
+        for line in pieces_lines:
+            self.pieces += line
+
+        self.squares = []
+        for line in squares_lines:
+            self.squares += line
+
+    def resize(self, add_w: int, add_h: int):
+        old_w = self.w
+        old_h = self.h
+        new_w = old_w + add_w
+        new_h = old_h + add_h
 
         pieces_lines = []
         squares_lines = []
-        for y in range(self.h):
-            i0 = y * self.w
-            i1 = i0 + self.w
+        for y in range(new_h):
+            i0 = y * old_w
+            i1 = i0 + min(new_w, old_w)
             pieces_lines.append(self.pieces[i0:i1])
             squares_lines.append(self.squares[i0:i1])
         for i in range(add_h):
-            pieces_lines.append([None] * self.w)
-            squares_lines.append([None] * self.w)
+            pieces_lines.append([None] * new_w)
+            squares_lines.append([None] * new_w)
 
         add_to_line = [None] * add_w
 
@@ -77,6 +111,9 @@ class Board:
         for line in squares_lines:
             line += add_to_line
             self.squares += line
+
+        self.w = new_w
+        self.h = new_h
 
     def coords_to_index(self, x: int, y: int) -> Optional[int]:
         if x < 0 or x >= self.w or y < 0 or y >= self.h:

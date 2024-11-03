@@ -18,6 +18,9 @@ KEYS_TO_DIRS: Dict[int, Dir] = {
 KEYS_TO_TEAMS: Dict[int, int] = {
     ord(str(i)): i for i in range(OPPONENT_TEAMS + 1)
 }
+KEYS_TO_SQUARE_CHARS: Dict[int, str] = {
+    ord(' ' if char == '.' else char.lower()): char
+    for char in Square.CHARS}
 
 OPPONENT_TEAM_COLORS = (1, 2, 3, 4)
 
@@ -126,6 +129,22 @@ class Editor:
             return False
         return True
 
+    def render_board(self):
+        screen = self.screen
+        board = self.board
+        i = 0
+        for y in range(board.h):
+            for x in range(board.w):
+                square = board.squares[i]
+                piece = board.pieces[i]
+                if piece:
+                    attrs = color_pair_attr_from_team(piece.team)
+                    screen.addch(y, x, piece.char, attrs)
+                else:
+                    char = square.char if square else '#'
+                    screen.addch(y, x, char)
+                i += 1
+
     def view_board(self):
         screen = self.screen
         board = self.board
@@ -135,24 +154,12 @@ class Editor:
             "Enter to add/remove piece",
             "Space to add/remove squares",
         ] + self._get_piece_key_message_lines() + [
+            "F3 to resize/scroll board",
             "F1 to quit",
         ])
         while True:
             screen.clear()
-
-            i = 0
-            for y in range(board.h):
-                for x in range(board.w):
-                    square = board.squares[i]
-                    piece = board.pieces[i]
-                    if piece:
-                        attrs = color_pair_attr_from_team(piece.team)
-                        screen.addch(y, x, piece.char, attrs)
-                    else:
-                        char = square.char if square else '#'
-                        screen.addch(y, x, char)
-                    i += 1
-
+            self.render_board()
             screen.addstr(board.h + 1, 0, "Selected piece: ")
             screen.addstr(self.piece.char, color_pair_attr_from_team(self.piece.team))
             screen.addstr(board.h + 3, 0, message)
@@ -161,15 +168,23 @@ class Editor:
             key = screen.getch()
             if key == curses.KEY_F1:
                 raise QuitEditor
+            elif key == curses.KEY_F3:
+                self.resize_board()
             elif key == curses.KEY_BACKSPACE:
                 self.select_piece()
-            elif key == ord(' '):
+            elif key in KEYS_TO_SQUARE_CHARS:
+                char = KEYS_TO_SQUARE_CHARS[key]
                 square = board.get_square(self.x, self.y)
                 if square:
-                    square = None
+                    if square.char == char:
+                        square = None
+                    else:
+                        square = square._replace(char=char)
                 else:
-                    square = Square(Square.CHAR_NORMAL)
+                    square = Square(char)
                 board.set_square(self.x, self.y, square)
+                if not square or square.solid:
+                    board.set_piece(self.x, self.y, None)
             elif key == ord('\n'):
                 square = board.get_square(self.x, self.y)
                 if square and not square.solid:
@@ -192,6 +207,53 @@ class Editor:
                     self.x += 1
             else:
                 self._handle_piece_key(key)
+
+    def resize_board(self):
+        screen = self.screen
+        board = self.board
+        scrolling = False
+        def get_message():
+            return '\n'.join([
+                f"Arrow keys to {'scroll' if scrolling else 'resize'}",
+                f"Backspace to {'resize' if scrolling else 'scroll'}",
+                "Enter when finished",
+                "F1 to quit",
+            ])
+        message = get_message()
+        while True:
+            screen.clear()
+            self.render_board()
+            screen.addstr(board.h + 1, 0, message)
+            screen.move(self.y, self.x)
+            screen.refresh()
+            key = screen.getch()
+            if key == curses.KEY_F1:
+                raise QuitEditor
+            elif key == curses.KEY_BACKSPACE:
+                scrolling = not scrolling
+                message = get_message()
+            elif key == ord('\n'):
+                return
+            elif key == curses.KEY_UP:
+                if scrolling:
+                    board.scroll(0, -1)
+                elif board.h > 0:
+                    board.resize(0, -1)
+            elif key == curses.KEY_DOWN:
+                if scrolling:
+                    board.scroll(0, 1)
+                else:
+                    board.resize(0, 1)
+            elif key == curses.KEY_LEFT:
+                if scrolling:
+                    board.scroll(-1, 0)
+                elif board.w > 0:
+                    board.resize(-1, 0)
+            elif key == curses.KEY_RIGHT:
+                if scrolling:
+                    board.scroll(1, 0)
+                else:
+                    board.resize(1, 0)
 
 
 def main(screen: curses.window, args: Namespace):
