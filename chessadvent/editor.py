@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+import json
 import curses
+import traceback
 from argparse import ArgumentParser, Namespace
 from typing import Dict, List
 
@@ -62,23 +64,22 @@ class Editor:
         self.piece = Piece('K')
         self.pawn_dir = 'u'
 
-        if args.filename:
-            self.board = Board.load(filename)
-        else:
-            self.board = Board(w=args.width, h=args.height)
+        self.filename = args.filename or 'testboard.json'
+        self.board = Board(w=args.width, h=args.height)
 
     def select_piece(self):
         # A screen of the UI which is specifically for selecting a piece
         # (in particular, allows rotating pawns w/ arrow keys)
-        screen = self.screen
-        board = self.board
-        message = '\n'.join([
-            "Arrow keys to rotate pawn",
-        ] + self._get_piece_key_message_lines() + [
-            "Enter when done",
-            "F1 to quit",
-        ])
         while True:
+            screen = self.screen
+            board = self.board
+            message = '\n'.join([
+                "Arrow keys to rotate pawn",
+            ] + self._get_piece_key_message_lines() + [
+                "Enter when done",
+                "F1 to quit",
+            ])
+
             screen.clear()
             screen.addstr(0, 0, "Selected piece: ")
             screen.addstr(self.piece.char, color_pair_attr_from_team(self.piece.team))
@@ -145,19 +146,60 @@ class Editor:
                     screen.addch(y, x, char)
                 i += 1
 
+    def addstr_safe(self, s, x=None, y=None, attr=None):
+        # TODO: make this actually safe, and then make use of it!..
+        args = []
+        if x is not None and y is not None:
+            args.append(x)
+            args.append(y)
+        args.append(s)
+        if attr is not None:
+            args.append(attr)
+        self.screen.addstr(*args)
+
+    def show_error(self, ex: Exception):
+        curses.reset_shell_mode()
+        self.screen.clear()
+        self.screen.refresh()
+        traceback.print_exception(type(ex), ex, ex.__traceback__)
+        input("Press Enter...")
+        curses.reset_prog_mode()
+
+    def save_board(self):
+        try:
+            data = self.board.dump()
+            with open(self.filename, 'w') as file:
+                json.dump(data, file, indent=4)
+        except Exception as ex:
+            self.show_error(ex)
+
+    def load_board(self):
+        try:
+            with open(self.filename) as file:
+                data = json.load(file)
+            self.board = Board.load(data)
+            self.x = 0
+            self.y = 0
+        except Exception as ex:
+            self.show_error(ex)
+
     def view_board(self):
-        screen = self.screen
-        board = self.board
-        message = '\n'.join([
-            "Arrow keys to move",
-            "Backspace to select piece",
-            "Enter to add/remove piece",
-            "Space to add/remove squares",
-        ] + self._get_piece_key_message_lines() + [
-            "F3 to resize/scroll board",
-            "F1 to quit",
-        ])
         while True:
+            screen = self.screen
+            board = self.board
+            message = '\n'.join([
+                "Arrow keys to move",
+                "Backspace to select piece",
+                "Enter to add/remove piece",
+                "Space to add/remove squares",
+            ] + self._get_piece_key_message_lines() + [
+                "F3 to resize/scroll board",
+                f"F5 to save board (to {self.filename})",
+                "F6 to change filename",
+                f"F7 to load board (to {self.filename})",
+                "F1 to quit",
+            ])
+
             screen.clear()
             self.render_board()
             screen.addstr(board.h + 1, 0, "Selected piece: ")
@@ -170,6 +212,17 @@ class Editor:
                 raise QuitEditor
             elif key == curses.KEY_F3:
                 self.resize_board()
+            elif key == curses.KEY_F5:
+                self.save_board()
+            elif key == curses.KEY_F6:
+                curses.reset_shell_mode()
+                screen.clear()
+                screen.refresh()
+                print(f"Old filename: {self.filename}")
+                self.filename = input("Enter new filename: ")
+                curses.reset_prog_mode()
+            elif key == curses.KEY_F7:
+                self.load_board()
             elif key == curses.KEY_BACKSPACE:
                 self.select_piece()
             elif key in KEYS_TO_SQUARE_CHARS:
@@ -209,18 +262,17 @@ class Editor:
                 self._handle_piece_key(key)
 
     def resize_board(self):
-        screen = self.screen
-        board = self.board
         scrolling = False
-        def get_message():
-            return '\n'.join([
+        while True:
+            screen = self.screen
+            board = self.board
+            message = '\n'.join([
                 f"Arrow keys to {'scroll' if scrolling else 'resize'}",
                 f"Backspace to {'resize' if scrolling else 'scroll'}",
                 "Enter when finished",
                 "F1 to quit",
             ])
-        message = get_message()
-        while True:
+
             screen.clear()
             self.render_board()
             screen.addstr(board.h + 1, 0, message)
@@ -231,7 +283,6 @@ class Editor:
                 raise QuitEditor
             elif key == curses.KEY_BACKSPACE:
                 scrolling = not scrolling
-                message = get_message()
             elif key == ord('\n'):
                 return
             elif key == curses.KEY_UP:
@@ -259,6 +310,8 @@ class Editor:
 def main(screen: curses.window, args: Namespace):
     screen.timeout(500)
 
+    curses.def_prog_mode()
+
     # Set up opponent teams' colours
     for team, fgcolor in zip(range(1, OPPONENT_TEAMS + 1), OPPONENT_TEAM_COLORS):
         curses.init_pair(team, fgcolor, 0)
@@ -272,4 +325,5 @@ def main(screen: curses.window, args: Namespace):
 
 if __name__ == '__main__':
     args = parse_args()
+    #curses.def_shell_mode()
     curses.wrapper(main, args)

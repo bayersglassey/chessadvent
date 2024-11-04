@@ -1,5 +1,5 @@
 
-from typing import List, Tuple, NamedTuple, Optional
+from typing import List, Dict, Tuple, NamedTuple, Optional, Any
 
 from .pieces import Piece
 
@@ -28,12 +28,35 @@ class Square(NamedTuple):
 
 class Board:
 
-    def __init__(self, *, w: int = 8, h: int = 8):
+    squares: List[Optional[Square]]
+    pieces: List[Optional[Piece]]
+
+    def __init__(self, *, w: int = 8, h: int = 8, squares=None, pieces=None):
         self.w = w
         self.h = h
-        self.squares: List[Optional[Square]] = [
-            Square(Square.CHAR_NORMAL) for i in range(self.size)]
-        self.pieces: List[Optional[Piece]] = [None] * self.size
+        size = w * h
+        self.squares = squares if squares is not None else [
+            Square(Square.CHAR_NORMAL) for i in range(size)]
+        self.pieces = pieces if pieces is not None else [None] * size
+
+    def dump(self) -> Dict[str, Any]:
+        def _dump_tuple(t):
+            return None if t is None else list(t)
+        return {
+            'w': self.w,
+            'h': self.h,
+            'squares': [_dump_tuple(square) for square in self.squares],
+            'pieces': [_dump_tuple(piece) for piece in self.pieces],
+        }
+
+    @classmethod
+    def load(cls, data: Dict[str, Any]) -> 'Board':
+        data = data.copy()
+        def _load_tuple(d, T):
+            return None if d is None else T(*d)
+        data['squares'] = [_load_tuple(d, Square) for d in data['squares']]
+        data['pieces'] = [_load_tuple(d, Piece) for d in data['pieces']]
+        return cls(**data)
 
     @property
     def size(self):
@@ -139,10 +162,3 @@ class Board:
         if i is None:
             raise IndexError(x, y)
         self.squares[i] = square
-
-    @classmethod
-    def load(cls, filename: str) -> 'Board':
-        raise NotImplementedError
-
-    def save(self, filename: str):
-        raise NotImplementedError
