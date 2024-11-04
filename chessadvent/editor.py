@@ -4,10 +4,10 @@ import json
 import curses
 import traceback
 from argparse import ArgumentParser, Namespace
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .pieces import Piece, Dir, Team, OPPONENT_TEAMS
-from .board import Board, Square
+from .board import Board, Square, Move, get_move_dir
 
 
 KEYS_TO_PIECE_TYPES: Dict[int, str] = {ord(t.lower()): t for t in Piece.TYPES}
@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument('--width', default=8)
     parser.add_argument('--height', default=8)
     parser.add_argument('-f', '--filename', default=None)
+    parser.add_argument('-l', '--load', default=False, action='store_true')
     return parser.parse_args()
 
 
@@ -66,6 +67,8 @@ class Editor:
 
         self.filename = args.filename or 'testboard.json'
         self.board = Board(w=args.width, h=args.height)
+        if args.load:
+            self.load_board()
 
     def select_piece(self):
         # A screen of the UI which is specifically for selecting a piece
@@ -97,8 +100,8 @@ class Editor:
                 if self.piece.type == 'P':
                     self.piece = self.piece._replace(char=Piece.pawn_char(
                         self.pawn_dir, self.piece.pawn_type))
-            else:
-                self._handle_piece_key(key)
+            elif self._handle_piece_key(key):
+                pass
 
     def _get_piece_key_message_lines(self) -> List[str]:
         # Returns instructions corresponding to self._handle_piece_key
@@ -130,7 +133,25 @@ class Editor:
             return False
         return True
 
-    def render_board(self):
+    def _handle_move_cursor(self, key: int) -> bool:
+        # Returns True if key was handled, False otherwise
+        if key == curses.KEY_UP:
+            if self.y > 0:
+                self.y -= 1
+        elif key == curses.KEY_DOWN:
+            if self.y < self.board.h - 1:
+                self.y += 1
+        elif key == curses.KEY_LEFT:
+            if self.x > 0:
+                self.x -= 1
+        elif key == curses.KEY_RIGHT:
+            if self.x < self.board.w - 1:
+                self.x += 1
+        else:
+            return False
+        return True
+
+    def render_board(self, *, moves: Optional[List[Move]] = None):
         screen = self.screen
         board = self.board
         i = 0
@@ -138,12 +159,15 @@ class Editor:
             for x in range(board.w):
                 square = board.squares[i]
                 piece = board.pieces[i]
+                attrs = 0
                 if piece:
-                    attrs = color_pair_attr_from_team(piece.team)
-                    screen.addch(y, x, piece.char, attrs)
+                    char = piece.char
+                    attrs |= color_pair_attr_from_team(piece.team)
                 else:
                     char = square.char if square else '#'
-                    screen.addch(y, x, char)
+                if moves is not None and moves[i]:
+                    attrs |= curses.A_REVERSE
+                screen.addch(y, x, char, attrs)
                 i += 1
 
     def addstr_safe(self, s, x=None, y=None, attr=None):
@@ -175,9 +199,7 @@ class Editor:
 
     def load_board(self):
         try:
-            with open(self.filename) as file:
-                data = json.load(file)
-            self.board = Board.load(data)
+            self.board = Board.from_file(self.filename)
             self.x = 0
             self.y = 0
         except Exception as ex:
@@ -188,11 +210,13 @@ class Editor:
             screen = self.screen
             board = self.board
             message = '\n'.join([
-                "Arrow keys to move",
-                "Backspace to select piece",
+                "Arrow keys to move cursor",
+                "Backspace to select a piece",
                 "Enter to add/remove piece",
                 "Space to add/remove squares",
             ] + self._get_piece_key_message_lines() + [
+                "S to select the piece at cursor",
+                "M to enter piece-moving mode",
                 "F3 to resize/scroll board",
                 f"F5 to save board (to {self.filename})",
                 "F6 to change filename",
@@ -210,6 +234,12 @@ class Editor:
             key = screen.getch()
             if key == curses.KEY_F1:
                 raise QuitEditor
+            elif key == ord('s'):
+                piece = board.get_piece(self.x, self.y)
+                if piece:
+                    self.piece = piece
+            elif key == ord('m'):
+                self.move_pieces()
             elif key == curses.KEY_F3:
                 self.resize_board()
             elif key == curses.KEY_F5:
@@ -226,6 +256,7 @@ class Editor:
             elif key == curses.KEY_BACKSPACE:
                 self.select_piece()
             elif key in KEYS_TO_SQUARE_CHARS:
+                # Add/remove square
                 char = KEYS_TO_SQUARE_CHARS[key]
                 square = board.get_square(self.x, self.y)
                 if square:
@@ -239,27 +270,17 @@ class Editor:
                 if not square or square.solid:
                     board.set_piece(self.x, self.y, None)
             elif key == ord('\n'):
-                square = board.get_square(self.x, self.y)
-                if square and not square.solid:
+                # Add/remove piece
+                if not board.solid_at(self.x, self.y):
                     piece = board.get_piece(self.x, self.y)
                     if piece == self.piece:
                         board.set_piece(self.x, self.y, None)
                     else:
                         board.set_piece(self.x, self.y, self.piece)
-            elif key == curses.KEY_UP:
-                if self.y > 0:
-                    self.y -= 1
-            elif key == curses.KEY_DOWN:
-                if self.y < board.h - 1:
-                    self.y += 1
-            elif key == curses.KEY_LEFT:
-                if self.x > 0:
-                    self.x -= 1
-            elif key == curses.KEY_RIGHT:
-                if self.x < board.w - 1:
-                    self.x += 1
-            else:
-                self._handle_piece_key(key)
+            elif self._handle_piece_key(key):
+                pass
+            elif self._handle_move_cursor(key):
+                pass
 
     def resize_board(self):
         scrolling = False
@@ -305,6 +326,64 @@ class Editor:
                     board.scroll(1, 0)
                 else:
                     board.resize(1, 0)
+
+    def move_pieces(self):
+
+        x0, y0, piece, moves = None, None, None, None
+        def select_piece():
+            nonlocal x0, y0, piece, moves
+            x0 = self.x
+            y0 = self.y
+            piece = self.board.get_piece(x0, y0)
+            moves = self.board.get_moves(x0, y0)
+        def unselect_piece():
+            nonlocal piece, moves
+            piece = None
+            moves = None
+
+        while True:
+            screen = self.screen
+            board = self.board
+            message = '\n'.join([
+                "Arrow keys to move cursor",
+                f"Enter to {'move piece' if piece else 'select piece to move'}",
+                "M to exit piece-moving mode",
+                "F1 to quit",
+            ])
+
+            screen.clear()
+            self.render_board(moves=moves)
+            if piece:
+                screen.addstr(board.h + 1, 0, "Moving piece: ")
+                screen.addstr(piece.char, color_pair_attr_from_team(piece.team))
+            else:
+                screen.addstr(board.h + 1, 0, "No piece selected!")
+            screen.addstr(board.h + 3, 0, message)
+            screen.move(self.y, self.x)
+            screen.refresh()
+            key = screen.getch()
+            if key == curses.KEY_F1:
+                raise QuitEditor
+            elif key == ord('\n'):
+                if piece:
+                    i = board.coords_to_index(self.x, self.y)
+                    move = moves[i]
+                    if move:
+                        if piece.type == 'P':
+                            dir = get_move_dir(move)
+                            piece = piece._replace(char=Piece.pawn_char(dir, 0))
+                        self.board.set_piece(x0, y0, None)
+                        self.board.set_piece(self.x, self.y, piece)
+                        unselect_piece()
+                else:
+                    select_piece()
+            elif key == ord('m'):
+                if piece:
+                    unselect_piece()
+                else:
+                    return
+            elif self._handle_move_cursor(key):
+                pass
 
 
 def main(screen: curses.window, args: Namespace):

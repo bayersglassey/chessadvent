@@ -1,8 +1,55 @@
 
-from typing import NamedTuple, Optional
+from typing import Tuple, NamedTuple, Optional
 
 
 Dir = str
+DIRS = 'uldr'
+def dir_diff(from_dir: Dir, to_dir: Dir) -> Dir:
+    """
+
+        >>> dir_diff('u', 'u')
+        'u'
+        >>> dir_diff('u', 'l')
+        'l'
+        >>> dir_diff('u', 'r')
+        'r'
+        >>> dir_diff('u', 'd')
+        'd'
+
+        >>> dir_diff('l', 'l')
+        'u'
+        >>> dir_diff('l', 'd')
+        'l'
+        >>> dir_diff('l', 'u')
+        'r'
+        >>> dir_diff('l', 'r')
+        'd'
+
+        >>> dir_diff('r', 'r')
+        'u'
+        >>> dir_diff('r', 'u')
+        'l'
+        >>> dir_diff('r', 'd')
+        'r'
+        >>> dir_diff('r', 'l')
+        'd'
+
+    """
+    from_i = DIRS.index(from_dir)
+    to_i = DIRS.index(to_dir)
+    return DIRS[(to_i - from_i) % 4]
+def dir_rotate_coords(dir: Dir, x: int, y: int) -> Tuple[int, int]:
+    if dir == 'u':
+        return x, y
+    elif dir == 'd':
+        return -x, -y
+    elif dir == 'l':
+        return y, -x
+    elif dir == 'r':
+        return -y, x
+    else:
+        raise ValueError(dir)
+
 
 # Player's team is 0, everything else is opponents
 Team = int
@@ -14,12 +61,11 @@ class Piece(NamedTuple):
     team: Team = 0
 
     TYPES = 'KQBNRP'
-    DIRS = 'udlr'
     PAWN_CHARS = '↑↓←→↟↡↞↠'
 
     @classmethod
     def pawn_char(cls, dir: Dir, pawn_type: int) -> str:
-        i = pawn_type * 4 + cls.DIRS.index(dir)
+        i = pawn_type * 4 + DIRS.index(dir)
         return cls.PAWN_CHARS[i]
 
     @property
@@ -35,10 +81,10 @@ class Piece(NamedTuple):
 
     @property
     def dir(self) -> Optional[Dir]:
-        """One of self.DIRS, i.e. 'udlr'"""
+        """One of DIRS, i.e. 'udlr'"""
         char = self.char
         if char in self.PAWN_CHARS:
-            return self.DIRS[self.PAWN_CHARS.index(char) % 4]
+            return DIRS[self.PAWN_CHARS.index(char) % 4]
         return None
 
     @property

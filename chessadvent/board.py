@@ -1,7 +1,34 @@
+import json
 
-from typing import List, Dict, Tuple, NamedTuple, Optional, Any
+from typing import List, Dict, Tuple, NamedTuple, Optional, Any, Union
 
-from .pieces import Piece
+from .pieces import Piece, Dir, dir_diff, dir_rotate_coords
+
+
+# Can we move onto a square?
+# * Empty string '': no move allowed
+# * Non-empty string
+#     * First char is 't' if we would take a piece, 'm' if we would move
+#       into an empty square, 'b' if we would bounce.
+#     * Second char is the Dir (one of 'udlr') in which we would end up
+#       facing.
+#       This only matters for pawns, or for the algorithm which determines
+#       where R/Q/B can move (because the piece's line of travel might
+#       change if it hits a reflector!)
+Move = str
+CANT_MOVE = ''
+def move_would_take(move: Move) -> bool:
+    return move and move[0] == 't'
+def move_would_bounce(move: Move) -> bool:
+    return move and move[0] == 'b'
+def get_move_dir(move: Move) -> Optional[Dir]:
+    return move[1] if move else None
+
+
+CanTake = int
+CANNOT_TAKE = 0
+CAN_TAKE = 1
+MUST_TAKE = 2
 
 
 class Square(NamedTuple):
@@ -57,6 +84,12 @@ class Board:
         data['squares'] = [_load_tuple(d, Square) for d in data['squares']]
         data['pieces'] = [_load_tuple(d, Piece) for d in data['pieces']]
         return cls(**data)
+
+    @classmethod
+    def from_file(cls, filename: str) -> 'Board':
+        with open(filename) as file:
+            data = json.load(file)
+        return cls.load(data)
 
     @property
     def size(self):
@@ -162,3 +195,130 @@ class Board:
         if i is None:
             raise IndexError(x, y)
         self.squares[i] = square
+
+    def solid_at(self, x: int, y: int) -> bool:
+        square = self.get_square(x, y)
+        return not square or square.solid
+
+    def get_moves(self, x: int, y: int) -> List[Move]:
+        """Returns a list of moves, of length self.size, usable with
+        self.get_coords_to_index."""
+
+        moves = [''] * self.size
+
+        piece = self.get_piece(x, y)
+        if not piece:
+            return moves
+
+        piece_type = piece.type
+        team = piece.team
+        dir = piece.dir
+
+        def check_move(x: int, y: int, dir: Dir = 'u', can_take: CanTake = CAN_TAKE) -> Move:
+            """Returns CANT_MOVE (which is falsey) if move is impossible.
+            If a move is possible, updates the corresponding element of moves,
+            and returns the move."""
+            i = self.coords_to_index(x, y)
+            if i is None:
+                # Can't move off the board
+                return CANT_MOVE
+            if i in moves:
+                # Don't check the same square more than once
+                return moves[i]
+            square = self.squares[i]
+            if not square or square.solid:
+                # Can't move onto a solid square
+                return CANT_MOVE
+            would_take = False
+            piece = self.pieces[i]
+            if piece:
+                if piece.team == team:
+                    # Can't move onto your other pieces
+                    return CANT_MOVE
+                else:
+                    # If we moved here, we would take a piece
+                    would_take = True
+            if can_take == CANNOT_TAKE and would_take:
+                # We can't take, but this would be a take!
+                return CANT_MOVE
+            if can_take == MUST_TAKE and not would_take:
+                # We must take, but this would not be a take!
+                return CANT_MOVE
+            move = f"{'t' if would_take else 'm'}{dir}"
+            moves[i] = move
+            return move
+
+        def pawn_move(addx: int, addy: int, dir: Dir, can_take: CanTake) -> Move:
+            addx, addy = dir_rotate_coords(dir, addx, addy)
+            px = x + addx
+            py = y + addy
+            return check_move(px, py, dir, can_take)
+
+        def check_line(x: int, y: int, addx: int, addy: int, dir: Dir):
+            addx, addy = dir_rotate_coords(dir, addx, addy)
+            x += addx
+            y += addy
+            while True:
+                move = check_move(x, y, dir)
+                if not move or 't' in move:
+                    # If we can't move, or if we will take a piece, then
+                    # we need to stop moving along this line.
+                    break
+                move_dir = get_move_dir(move)
+                if move_dir and move_dir != dir:
+                    addx, addy = dir_rotate_coords(
+                        dir_diff(move_dir, dir), addx, addy)
+                    dir = move_dir
+                x += addx
+                y += addy
+
+        def check_rook():
+            check_line(x, y,  0, -1, 'u')
+            check_line(x, y,  0, -1, 'd')
+            check_line(x, y,  0, -1, 'l')
+            check_line(x, y,  0, -1, 'r')
+
+        def check_bishop():
+            check_line(x, y, -1, -1, 'u')
+            check_line(x, y, -1, -1, 'd')
+            check_line(x, y, -1, -1, 'l')
+            check_line(x, y, -1, -1, 'r')
+
+        if piece_type == 'K':
+            # Check king's 8 possible moves
+            check_move(x - 1, y - 1)
+            check_move(x    , y - 1)
+            check_move(x + 1, y - 1)
+            check_move(x - 1, y    )
+            check_move(x + 1, y    )
+            check_move(x - 1, y + 1)
+            check_move(x    , y + 1)
+            check_move(x + 1, y + 1)
+        elif piece_type == 'Q':
+            check_rook()
+            check_bishop()
+        elif piece_type == 'R':
+            check_rook()
+        elif piece_type == 'B':
+            check_bishop()
+        elif piece_type == 'N':
+            # Check knight's 8 possible moves
+            check_move(x - 1, y - 2)
+            check_move(x - 2, y - 1)
+            check_move(x - 2, y + 1)
+            check_move(x - 1, y + 2)
+            check_move(x + 1, y + 2)
+            check_move(x + 2, y + 1)
+            check_move(x + 2, y - 1)
+            check_move(x + 1, y - 2)
+        elif piece_type == 'P':
+            # Check if pawn can take diagonally
+            pawn_move(-1, -1, dir, MUST_TAKE)
+            pawn_move(+1, -1, dir, MUST_TAKE)
+            # Check if pawn can move forwards
+            move_forward = pawn_move(0, -1, dir, CANNOT_TAKE)
+            if move_forward and piece.pawn_type == 1:
+                new_dir = get_move_dir(move_forward)
+                pawn_move(0, -2, new_dir, CANNOT_TAKE)
+
+        return moves
