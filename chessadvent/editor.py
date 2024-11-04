@@ -7,7 +7,7 @@ from argparse import ArgumentParser, Namespace
 from typing import Dict, List, Optional
 
 from .pieces import Piece, Dir, Team, OPPONENT_TEAMS
-from .board import Board, Square, Move, get_move_dir
+from .board import Board, Square, Move
 
 
 KEYS_TO_PIECE_TYPES: Dict[int, str] = {ord(t.lower()): t for t in Piece.TYPES}
@@ -380,7 +380,10 @@ class Editor:
                     move = moves[i]
                     if move:
                         if piece.type == 'P':
-                            dir = get_move_dir(move)
+                            if len(move) == 1:
+                                dir = move[0]
+                            else:
+                                raise Exception("OMG")
                             piece = piece._replace(char=Piece.pawn_char(dir, 0))
                         self.board.set_piece(x0, y0, None)
                         self.board.set_piece(self.x, self.y, piece)

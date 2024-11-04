@@ -6,23 +6,13 @@ from .pieces import Piece, Dir, dir_diff, dir_rotate_coords
 
 
 # Can we move onto a square?
-# * Empty string '': no move allowed
-# * Non-empty string
-#     * First char is 't' if we would take a piece, 'm' if we would move
-#       into an empty square, 'b' if we would bounce.
-#     * Second char is the Dir (one of 'udlr') in which we would end up
-#       facing.
-#       This only matters for pawns, or for the algorithm which determines
-#       where R/Q/B can move (because the piece's line of travel might
-#       change if it hits a reflector!)
+# * Empty string: no
+# * Non-empty string: yes
+#     * The string is one or more Dir values (i.e. a set of chars in 'udlr')
 Move = str
-CANT_MOVE = ''
-def move_would_take(move: Move) -> bool:
-    return move and move[0] == 't'
-def move_would_bounce(move: Move) -> bool:
-    return move and move[0] == 'b'
-def get_move_dir(move: Move) -> Optional[Dir]:
-    return move[1] if move else None
+
+
+CheckMoveResult = Optional[Tuple[Move, bool, Dir]]
 
 
 CanTake = int
@@ -214,41 +204,43 @@ class Board:
         team = piece.team
         dir = piece.dir
 
-        def check_move(x: int, y: int, dir: Dir = 'u', can_take: CanTake = CAN_TAKE) -> Move:
-            """Returns CANT_MOVE (which is falsey) if move is impossible.
-            If a move is possible, updates the corresponding element of moves,
-            and returns the move."""
+        def check_move(x: int, y: int, dir: Dir = 'u', can_take: CanTake = CAN_TAKE) -> CheckMoveResult:
+            """Returns (move, would_take, dir), or None if move is invalid.
+            If move is truthy, also updates the corresponding element of
+            moves."""
             i = self.coords_to_index(x, y)
             if i is None:
                 # Can't move off the board
-                return CANT_MOVE
-            if i in moves:
-                # Don't check the same square more than once
-                return moves[i]
+                return None
+            move = moves[i]
+            if dir in move:
+                # Don't check the same square in the same direction more
+                # than once!.. so we short-circuit the algorithm here
+                return None
             square = self.squares[i]
             if not square or square.solid:
                 # Can't move onto a solid square
-                return CANT_MOVE
+                return None
             would_take = False
             piece = self.pieces[i]
             if piece:
                 if piece.team == team:
                     # Can't move onto your other pieces
-                    return CANT_MOVE
+                    return None
                 else:
                     # If we moved here, we would take a piece
                     would_take = True
             if can_take == CANNOT_TAKE and would_take:
                 # We can't take, but this would be a take!
-                return CANT_MOVE
+                return None
             if can_take == MUST_TAKE and not would_take:
                 # We must take, but this would not be a take!
-                return CANT_MOVE
-            move = f"{'t' if would_take else 'm'}{dir}"
+                return None
+            move += dir
             moves[i] = move
-            return move
+            return move, would_take, dir
 
-        def pawn_move(addx: int, addy: int, dir: Dir, can_take: CanTake) -> Move:
+        def pawn_move(addx: int, addy: int, dir: Dir, can_take: CanTake) -> CheckMoveResult:
             addx, addy = dir_rotate_coords(dir, addx, addy)
             px = x + addx
             py = y + addy
@@ -259,12 +251,14 @@ class Board:
             x += addx
             y += addy
             while True:
-                move = check_move(x, y, dir)
-                if not move or 't' in move:
-                    # If we can't move, or if we will take a piece, then
-                    # we need to stop moving along this line.
+                result = check_move(x, y, dir)
+                if result is None:
+                    # We can't move any further this way
                     break
-                move_dir = get_move_dir(move)
+                move, would_take, move_dir = result
+                if would_take:
+                    # We can't keep moving after taking a piece
+                    break
                 if move_dir and move_dir != dir:
                     addx, addy = dir_rotate_coords(
                         dir_diff(move_dir, dir), addx, addy)
@@ -316,9 +310,10 @@ class Board:
             pawn_move(-1, -1, dir, MUST_TAKE)
             pawn_move(+1, -1, dir, MUST_TAKE)
             # Check if pawn can move forwards
-            move_forward = pawn_move(0, -1, dir, CANNOT_TAKE)
-            if move_forward and piece.pawn_type == 1:
-                new_dir = get_move_dir(move_forward)
-                pawn_move(0, -2, new_dir, CANNOT_TAKE)
+            result = pawn_move(0, -1, dir, CANNOT_TAKE)
+            if result is not None:
+                move, would_take, move_dir = result
+                if move and piece.pawn_type == 1:
+                    pawn_move(0, -2, move_dir, CANNOT_TAKE)
 
         return moves
