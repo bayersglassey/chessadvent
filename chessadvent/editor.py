@@ -181,6 +181,14 @@ class Editor:
             args.append(attr)
         self.screen.addstr(*args)
 
+    def show_message(self, msg: str):
+        curses.reset_shell_mode()
+        self.screen.clear()
+        self.screen.refresh()
+        print(msg)
+        input("Press Enter...")
+        curses.reset_prog_mode()
+
     def show_error(self, ex: Exception):
         curses.reset_shell_mode()
         self.screen.clear()
@@ -244,6 +252,7 @@ class Editor:
                 self.resize_board()
             elif key == curses.KEY_F5:
                 self.save_board()
+                self.show_message(f"Saved to: {self.filename}")
             elif key == curses.KEY_F6:
                 curses.reset_shell_mode()
                 screen.clear()
@@ -253,6 +262,7 @@ class Editor:
                 curses.reset_prog_mode()
             elif key == curses.KEY_F7:
                 self.load_board()
+                self.show_message(f"Loaded from: {self.filename}")
             elif key == curses.KEY_BACKSPACE:
                 self.select_piece()
             elif key in KEYS_TO_SQUARE_CHARS:
