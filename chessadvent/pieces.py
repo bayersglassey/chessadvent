@@ -61,7 +61,7 @@ class Piece(NamedTuple):
     team: Team = 0
 
     TYPES = 'KQBNRP'
-    PAWN_CHARS = '↑↓←→↟↡↞↠'
+    PAWN_CHARS = '↑←↓→↟↞↡↠'
 
     @classmethod
     def pawn_char(cls, dir: Dir, pawn_type: int) -> str:
