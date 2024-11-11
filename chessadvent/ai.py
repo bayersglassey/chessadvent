@@ -1,12 +1,19 @@
 from typing import List, Tuple, Set
 
 from .pieces import Team, N_TEAMS, PIECE_SCORES
-from .board import Board, BoardState, LocatedPiece
+from .board import Board, BoardState, PieceMove
 from .moves import Move
 
 
-# Default worth of each available move we have when scoring a board state
-MOBILITY_WEIGHT = .1
+# Default worth of each available move we have
+# (when scoring a board state)
+MOVE_WEIGHT = .02
+
+# Default worth of each piece we have with no available moves
+# (when scoring a board state)
+STUCK_PIECE_WEIGHT = -.1
+
+Score = float
 
 
 class AI:
@@ -32,7 +39,7 @@ class AI:
 
         The AI considers this board state to be neutral.
         >>> state = board.get_state()
-        >>> ai.score(state)
+        >>> round(ai.get_state_score(state), 6)
         0.0
 
         Now the AI makes a move!..
@@ -55,8 +62,18 @@ class AI:
         (Due to increased mobility, now that AI's pawn isn't blocking
         some of its pieces)
         >>> state = board.get_state()
-        >>> ai.score(state)
-        1.0
+        >>> round(ai.get_state_score(state), 6)
+        0.5
+
+        Let's ask the AI which moves it considers to be the best from here:
+        >>> next_moves = ai.find_next_moves(board)
+        >>> len(next_moves)
+        30
+        >>> for (piece, move), score in next_moves[:3]:
+        ...     print(piece.piece.char, (move.x, move.y), round(score, 6))
+        Q (1, 5) 0.8
+        ↡ (5, 4) 0.76
+        Q (2, 4) 0.7
 
     """
 
@@ -70,23 +87,51 @@ class AI:
             other_team: 1 if other_team == team else -1
             for other_team in range(N_TEAMS)}
 
-        # How much we like for each team to have mobility
-        self.mobility_weight_by_team = {
-            other_team: MOBILITY_WEIGHT * (1 if other_team == team else -1)
+        # How much we like for each team to have available moves
+        self.move_weight_by_team = {
+            other_team: MOVE_WEIGHT * (1 if other_team == team else -1)
             for other_team in range(N_TEAMS)}
 
-    def score(self, state: BoardState) -> float:
+        # How much we like for each team to have stuck pieces
+        self.stuck_piece_weight_by_team = {
+            other_team: STUCK_PIECE_WEIGHT * (1 if other_team == team else -1)
+            for other_team in range(N_TEAMS)}
+
+    def get_state_score(self, state: BoardState) -> Score:
+        """Get a score for the given state"""
 
         piece_scores = self.piece_scores
-        material_score = sum(
-            piece_scores[piece_type] * piece_count * material_weight
-            for team, material_weight in self.material_weight_by_team.items()
-            if team in state.material_by_team
-            for piece_type, piece_count in state.material_by_team[team].items())
 
-        mobility_score = sum(
-            state.mobility_by_team[team] * mobility_weight
-            for team, mobility_weight in self.mobility_weight_by_team.items()
-            if team in state.mobility_by_team)
+        material_score = 0
+        moves_score = 0
+        stuck_pieces_score = 0
+        for team in state.teams:
+            material_weight = self.material_weight_by_team[team]
+            for piece_type, piece_count in state.material_by_team[team].items():
+                material_score += piece_scores[piece_type] * piece_count * material_weight
+            move_weight = self.move_weight_by_team[team]
+            stuck_piece_weight = self.stuck_piece_weight_by_team[team]
+            for piece, moves in state.pieces_and_moves_by_team[team]:
+                if moves:
+                    moves_score += len(moves) * move_weight
+                else:
+                    stuck_pieces_score += stuck_piece_weight
 
+        mobility_score = moves_score + stuck_pieces_score
         return material_score + mobility_score
+
+    def find_next_moves(self, board: Board) -> List[Tuple[PieceMove, Score]]:
+        """Find our next possible moves for the given board, sorted by score
+        (highest first)"""
+        moves_and_scores = []
+        state = board.get_state()
+        pieces_and_moves = state.pieces_and_moves_by_team[self.team]
+        for piece, moves in pieces_and_moves:
+            for move in moves:
+                new_board = board.copy_for_trying_out_moves()
+                new_board.move(piece.x, piece.y, move.x, move.y, move.dir)
+                new_state = new_board.get_state()
+                score = self.get_state_score(new_state)
+                moves_and_scores.append((PieceMove(piece, move), score))
+        moves_and_scores.sort(key=lambda t: t[1], reverse=True)
+        return moves_and_scores

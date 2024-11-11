@@ -2,12 +2,13 @@ import json
 
 from typing import List, Dict, Set, NamedTuple, Optional, Any
 from functools import cached_property
-from collections import defaultdict
 
 from .pieces import (
     Piece,
     PieceType,
+    PIECE_TYPES,
     Team,
+    N_TEAMS,
     PawnDir,
     MOVE_DIRS_TO_PAWN_DIRS,
 )
@@ -36,6 +37,11 @@ class LocatedPiece(NamedTuple):
     x: int
     y: int
     piece: Piece
+
+
+class PieceMove(NamedTuple):
+    piece: LocatedPiece
+    move: Move
 
 
 class CheckMoveResult(NamedTuple):
@@ -194,6 +200,18 @@ class Board:
         self.squares = squares if squares is not None else [
             Square(Square.CHAR_NORMAL) for i in range(size)]
         self.pieces = pieces if pieces is not None else [None] * size
+
+    def copy_for_trying_out_moves(self) -> 'Board':
+        """Create a copy of self, for trying out moves, e.g. to see how a
+        board state's score will be changed by making some move"""
+        return Board(
+            w=self.w,
+            h=self.h,
+            squares=self.squares,
+            # We need to copy self.pieces, since that's what might be
+            # affected by moves being made
+            pieces=self.pieces.copy(),
+        )
 
     def get_state_id(self) -> str:
         """Generates a string uniquely identifying this board's current
@@ -539,14 +557,9 @@ class BoardState:
         Nx3 Bx5 Kx1 Qx4 Nx2 ↡x2 ↡x2 ↡x2 ↡x2 ↡x2 ↡x2 ↡x2 ↓x1
 
         >>> for team, material in state.material_by_team.items():
-        ...     print(f'{team}: {dict(material)}')
-        1: {'R': 2, 'N': 2, 'B': 2, 'K': 1, 'Q': 1, 'P': 8}
-        0: {'P': 8, 'R': 2, 'N': 2, 'B': 2, 'K': 1, 'Q': 1}
-
-        >>> for team, mobility in state.mobility_by_team.items():
-        ...     print(f'{team}: {mobility}')
-        1: 30
-        0: 20
+        ...     print(f'{team}: {material}')
+        0: {'K': 1, 'Q': 1, 'B': 2, 'N': 2, 'R': 2, 'P': 8}
+        1: {'K': 1, 'Q': 1, 'B': 2, 'N': 2, 'R': 2, 'P': 8}
 
     """
 
@@ -555,22 +568,26 @@ class BoardState:
         self.state_id = board.get_state_id()
 
         # self.pieces_and_moves_by_team[team] = (located_piece, moves)
-        self.pieces_and_moves_by_team = pieces_and_moves_by_team = defaultdict(list)
+        self.pieces_and_moves_by_team = pieces_and_moves_by_team = {
+            team: [] for team in range(N_TEAMS)}
         for piece in board.list_pieces():
             piece_and_moves = (piece, board.get_moves(piece.x, piece.y))
             pieces_and_moves_by_team[piece.piece.team].append(piece_and_moves)
 
+        # self.teams: teams with any pieces on the board
+        self.teams = teams = {team for team in range(N_TEAMS)
+            if pieces_and_moves_by_team[team]}
+        for team in range(N_TEAMS):
+            if team not in teams:
+                del pieces_and_moves_by_team[team]
+
         def get_material(pieces_and_moves) -> Dict[PieceType, int]:
-            material = defaultdict(int)
+            material = {piece_type: 0 for piece_type in PIECE_TYPES}
             for piece, moves in pieces_and_moves:
                 material[piece.piece.type] += 1
             return material
 
-        # self.mobility_by_team[team] = count
-        self.mobility_by_team = mobility_by_team = {}
         # self.material_by_team[team][piece] = count
         self.material_by_team = material_by_team = {}
         for team, pieces_and_moves in pieces_and_moves_by_team.items():
-            mobility_by_team[team] = sum(len(moves)
-                for pieces, moves in pieces_and_moves)
             material_by_team[team] = get_material(pieces_and_moves)
