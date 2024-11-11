@@ -6,24 +6,33 @@ import traceback
 from argparse import ArgumentParser, Namespace
 from typing import Dict, List, Optional
 
-from .pieces import Piece, Dir, Team, OPPONENT_TEAMS
-from .board import Board, Square, Move
+from .pieces import (
+    Piece,
+    PawnDir,
+    Team,
+    PIECE_TYPES,
+    N_TEAMS,
+    MOVE_DIRS_TO_PAWN_DIRS,
+)
+from .moves import Move
+from .board import Board, Square
 
 
-KEYS_TO_PIECE_TYPES: Dict[int, str] = {ord(t.lower()): t for t in Piece.TYPES}
-KEYS_TO_DIRS: Dict[int, Dir] = {
+KEYS_TO_PIECE_TYPES: Dict[int, str] = {ord(t.lower()): t for t in PIECE_TYPES}
+KEYS_TO_PAWN_DIRS: Dict[int, PawnDir] = {
     curses.KEY_UP: 'u',
     curses.KEY_DOWN: 'd',
     curses.KEY_LEFT: 'l',
     curses.KEY_RIGHT: 'r',
 }
 KEYS_TO_TEAMS: Dict[int, int] = {
-    ord(str(i)): i for i in range(OPPONENT_TEAMS + 1)
+    ord(str(i)): i for i in range(N_TEAMS)
 }
 KEYS_TO_SQUARE_CHARS: Dict[int, str] = {
     ord(' ' if char == '.' else char.lower()): char
     for char in Square.CHARS}
 
+# curses color pair ids
 OPPONENT_TEAM_COLORS = (1, 2, 3, 4)
 
 
@@ -95,8 +104,8 @@ class Editor:
                 raise QuitEditor
             elif key == ord('\n'):
                 return
-            elif key in KEYS_TO_DIRS:
-                self.pawn_dir = KEYS_TO_DIRS[key]
+            elif key in KEYS_TO_PAWN_DIRS:
+                self.pawn_dir = KEYS_TO_PAWN_DIRS[key]
                 if self.piece.type == 'P':
                     self.piece = self.piece._replace(char=Piece.pawn_char(
                         self.pawn_dir, self.piece.pawn_type))
@@ -106,9 +115,9 @@ class Editor:
     def _get_piece_key_message_lines(self) -> List[str]:
         # Returns instructions corresponding to self._handle_piece_key
         return [
-            f"{Piece.TYPES} to choose piece",
+            f"{PIECE_TYPES} to choose piece",
             "(Press 'P' multiple times to change pawn type)",
-            f"{''.join(str(i) for i in range(OPPONENT_TEAMS + 1))} to choose team",
+            f"{''.join(str(i) for i in range(N_TEAMS))} to choose team",
         ]
 
     def _handle_piece_key(self, key: int) -> bool:
@@ -165,8 +174,11 @@ class Editor:
                     attrs |= color_pair_attr_from_team(piece.team)
                 else:
                     char = square.char if square else '#'
-                if moves is not None and moves[i]:
-                    attrs |= curses.A_REVERSE
+                if moves is not None:
+                    for dir in range(8):
+                        if Move(x, y, dir) in moves:
+                            attrs |= curses.A_REVERSE
+                            break
                 screen.addch(y, x, char, attrs)
                 i += 1
 
@@ -277,11 +289,11 @@ class Editor:
                 else:
                     square = Square(char)
                 board.set_square(self.x, self.y, square)
-                if not square or square.solid:
+                if not square or square.is_solid:
                     board.set_piece(self.x, self.y, None)
             elif key == ord('\n'):
                 # Add/remove piece
-                if not board.solid_at(self.x, self.y):
+                if not board.is_solid_at(self.x, self.y):
                     piece = board.get_piece(self.x, self.y)
                     if piece == self.piece:
                         board.set_piece(self.x, self.y, None)
@@ -376,15 +388,17 @@ class Editor:
                 raise QuitEditor
             elif key == ord('\n'):
                 if piece:
-                    i = board.coords_to_index(self.x, self.y)
-                    move = moves[i]
-                    if move:
+                    move_dirs = {
+                        dir for dir in range(8)
+                        if Move(self.x, self.y, dir) in moves}
+                    if move_dirs:
                         if piece.type == 'P':
-                            if len(move) == 1:
-                                dir = move[0]
+                            if len(move_dirs) == 1:
+                                move_dir = next(iter(move_dirs))
+                                pawn_dir = MOVE_DIRS_TO_PAWN_DIRS[move_dir]
                             else:
-                                raise Exception("OMG")
-                            piece = piece._replace(char=Piece.pawn_char(dir, 0))
+                                raise Exception(f"TODO: make user choose a dir!.. out of: {move_dirs}")
+                            piece = piece._replace(char=Piece.pawn_char(pawn_dir, 0))
                         self.board.set_piece(x0, y0, None)
                         self.board.set_piece(self.x, self.y, piece)
                         unselect_piece()
@@ -405,7 +419,7 @@ def main(screen: curses.window, args: Namespace):
     curses.def_prog_mode()
 
     # Set up opponent teams' colours
-    for team, fgcolor in zip(range(1, OPPONENT_TEAMS + 1), OPPONENT_TEAM_COLORS):
+    for team, fgcolor in zip(range(1, N_TEAMS), OPPONENT_TEAM_COLORS):
         curses.init_pair(team, fgcolor, 0)
 
     editor = Editor(args=args, screen=screen)

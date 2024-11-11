@@ -1,96 +1,67 @@
 
-from typing import Tuple, NamedTuple, Optional
+from typing import Dict, NamedTuple, Optional
+
+from .moves import MoveDir, MOVE_N, MOVE_S, MOVE_W, MOVE_E
 
 
-Dir = str
-DIRS = 'uldr'
-def dir_diff(from_dir: Dir, to_dir: Dir) -> Dir:
-    """
+PIECE_TYPES = 'KQBNRP'
+PAWN_CHARS = '↑↓←→↟↡↞↠'
 
-        >>> dir_diff('u', 'u')
-        'u'
-        >>> dir_diff('u', 'l')
-        'l'
-        >>> dir_diff('u', 'r')
-        'r'
-        >>> dir_diff('u', 'd')
-        'd'
 
-        >>> dir_diff('l', 'l')
-        'u'
-        >>> dir_diff('l', 'd')
-        'l'
-        >>> dir_diff('l', 'u')
-        'r'
-        >>> dir_diff('l', 'r')
-        'd'
-
-        >>> dir_diff('r', 'r')
-        'u'
-        >>> dir_diff('r', 'u')
-        'l'
-        >>> dir_diff('r', 'd')
-        'r'
-        >>> dir_diff('r', 'l')
-        'd'
-
-    """
-    from_i = DIRS.index(from_dir)
-    to_i = DIRS.index(to_dir)
-    return DIRS[(to_i - from_i) % 4]
-def dir_rotate_coords(dir: Dir, x: int, y: int) -> Tuple[int, int]:
-    if dir == 'u':
-        return x, y
-    elif dir == 'd':
-        return -x, -y
-    elif dir == 'l':
-        return y, -x
-    elif dir == 'r':
-        return -y, x
-    else:
-        raise ValueError(dir)
+PawnDir = str
+PAWN_DIRS = 'udlr'
+PAWN_DIRS_TO_MOVE_DIRS: Dict[PawnDir, MoveDir] = {
+    'u': MOVE_N,
+    'd': MOVE_S,
+    'l': MOVE_W,
+    'r': MOVE_E,
+}
+MOVE_DIRS_TO_PAWN_DIRS: Dict[MoveDir, PawnDir] = {
+    v: k for k, v in PAWN_DIRS_TO_MOVE_DIRS.items()}
 
 
 # Player's team is 0, everything else is opponents
 Team = int
-OPPONENT_TEAMS = 4
+N_TEAMS = 5
 
 
 class Piece(NamedTuple):
     char: str
     team: Team = 0
 
-    TYPES = 'KQBNRP'
-    PAWN_CHARS = '↑←↓→↟↞↡↠'
-
     @classmethod
-    def pawn_char(cls, dir: Dir, pawn_type: int) -> str:
-        i = pawn_type * 4 + DIRS.index(dir)
-        return cls.PAWN_CHARS[i]
+    def pawn_char(cls, pawn_dir: PawnDir, pawn_type: int) -> str:
+        i = pawn_type * 4 + PAWN_DIRS.index(pawn_dir)
+        return PAWN_CHARS[i]
 
     @property
     def type(self) -> str:
-        """Type of chess piece, one of self.TYPES, e.g. 'K', 'P', etc"""
+        """Type of chess piece, one of PIECE_TYPES, e.g. 'K', 'P', etc"""
         char = self.char
-        if char in self.PAWN_CHARS:
+        if char in PAWN_CHARS:
             return 'P'
-        elif char in self.TYPES:
+        elif char in PIECE_TYPES:
             return char
         else:
             raise ValueError(char)
 
     @property
-    def dir(self) -> Optional[Dir]:
-        """One of DIRS, i.e. 'udlr'"""
+    def pawn_dir(self) -> Optional[PawnDir]:
+        """One of PAWN_DIRS, i.e. 'udlr'"""
         char = self.char
-        if char in self.PAWN_CHARS:
-            return DIRS[self.PAWN_CHARS.index(char) % 4]
+        if char in PAWN_CHARS:
+            return PAWN_DIRS[PAWN_CHARS.index(char) % 4]
         return None
+
+    @property
+    def move_dir(self) -> Optional[MoveDir]:
+        pawn_dir = self.pawn_dir
+        return pawn_dir and PAWN_DIRS_TO_MOVE_DIRS[pawn_dir]
 
     @property
     def pawn_type(self) -> int:
         """0: regular pawn, 1: pawn which can move 2 spaces"""
         char = self.char
-        if char not in self.PAWN_CHARS:
+        if char not in PAWN_CHARS:
             raise ValueError(char)
-        return self.PAWN_CHARS.index(char) // 4
+        return PAWN_CHARS.index(char) // 4
