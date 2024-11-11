@@ -120,18 +120,37 @@ class AI:
         mobility_score = moves_score + stuck_pieces_score
         return material_score + mobility_score
 
-    def find_next_moves(self, board: Board) -> List[Tuple[PieceMove, Score]]:
+    def find_next_moves(self, board: Board, *, for_piece: Tuple[int, int] = None) -> List[Tuple[PieceMove, Score]]:
         """Find our next possible moves for the given board, sorted by score
         (highest first)"""
-        moves_and_scores = []
+
         state = board.get_state()
+
+        if self.team not in state.pieces_and_moves_by_team:
+            # We have no valid moves!
+            return []
+
         pieces_and_moves = state.pieces_and_moves_by_team[self.team]
+        if for_piece is not None:
+            # Filter pieces_and_moves so it only contains one entry, for
+            # the indicated piece
+            x, y = for_piece
+            for piece, moves in pieces_and_moves:
+                if piece.x == x and piece.y == y:
+                    break
+            else:
+                raise Exception(f"No piece at {(x, y)}!")
+            pieces_and_moves = [(piece, moves)]
+
+        moves_and_scores = []
         for piece, moves in pieces_and_moves:
             for move in moves:
                 new_board = board.copy_for_trying_out_moves()
-                new_board.move(piece.x, piece.y, move.x, move.y, move.dir)
+                piece_move = PieceMove(piece, move)
+                new_board.apply(piece_move)
                 new_state = new_board.get_state()
                 score = self.get_state_score(new_state)
-                moves_and_scores.append((PieceMove(piece, move), score))
+                moves_and_scores.append((piece_move, score))
+
         moves_and_scores.sort(key=lambda t: t[1], reverse=True)
         return moves_and_scores

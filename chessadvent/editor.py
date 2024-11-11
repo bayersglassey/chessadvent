@@ -16,6 +16,7 @@ from .pieces import (
 )
 from .moves import Move
 from .board import Board, Square
+from .ai import AI
 
 
 KEYS_TO_PIECE_TYPES: Dict[int, str] = {ord(t.lower()): t for t in PIECE_TYPES}
@@ -78,6 +79,8 @@ class Editor:
         self.board = Board(w=args.width, h=args.height)
         if args.load:
             self.load_board()
+
+        self.ais = {team: AI(team) for team in range(N_TEAMS)}
 
     def select_piece(self):
         # A screen of the UI which is specifically for selecting a piece
@@ -225,18 +228,26 @@ class Editor:
         except Exception as ex:
             self.show_error(ex)
 
+    def make_ai_move(self, team: Team):
+        ai = self.ais[team]
+        next_moves = ai.find_next_moves(self.board)
+        if next_moves:
+            next_move, score = next_moves[0]
+            self.board.apply(next_move)
+
     def view_board(self):
         while True:
             screen = self.screen
             board = self.board
             message = '\n'.join([
                 "Arrow keys to move cursor",
-                "Backspace to select a piece",
+                "Backspace to select a piece (i.e. rotate pawn)",
                 "Enter to add/remove piece",
                 "Space to add/remove squares",
             ] + self._get_piece_key_message_lines() + [
                 "S to select the piece at cursor",
                 "M to enter piece-moving mode",
+                "A to let AI make a move",
                 "F3 to resize/scroll board",
                 f"F5 to save board (to {self.filename})",
                 "F6 to change filename",
@@ -260,6 +271,11 @@ class Editor:
                     self.piece = piece
             elif key == ord('m'):
                 self.move_pieces()
+            elif key == ord('a'):
+                team = self.piece.team
+                self.make_ai_move(team)
+                team = (team + 1) % N_TEAMS
+                self.piece = self.piece._replace(team=team)
             elif key == curses.KEY_F3:
                 self.resize_board()
             elif key == curses.KEY_F5:
@@ -402,6 +418,8 @@ class Editor:
                         unselect_piece()
                 else:
                     select_piece()
+            elif key == ord('a'):
+                self.make_ai_move(1)
             elif key == ord('m'):
                 if piece:
                     unselect_piece()

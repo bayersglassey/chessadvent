@@ -379,6 +379,10 @@ class Board:
         self.set_piece(x0, y0, None)
         self.set_piece(x1, y1, piece)
 
+    def apply(self, piece_move: PieceMove):
+        piece, move = piece_move
+        self.move(piece.x, piece.y, move.x, move.y, move.dir)
+
     def get_moves(self, x: int, y: int) -> Set[Move]:
 
         piece = self.get_piece(x, y)
