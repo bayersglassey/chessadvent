@@ -1,8 +1,16 @@
 import json
 
 from typing import List, Dict, Set, NamedTuple, Optional, Any
+from functools import cached_property
+from collections import defaultdict
 
-from .pieces import Piece, PawnDir
+from .pieces import (
+    Piece,
+    PieceType,
+    Team,
+    PawnDir,
+    MOVE_DIRS_TO_PAWN_DIRS,
+)
 from .moves import (
     MoveDir,
     Move,
@@ -134,6 +142,9 @@ class Board:
         %....%
         %%%%%%
 
+        >>> b.get_state_id()
+        '......#...0K......'
+
         >>> b.get_square(0, 0)
         Square(char='.')
         >>> b.get_square(2, 1)
@@ -183,6 +194,17 @@ class Board:
         self.squares = squares if squares is not None else [
             Square(Square.CHAR_NORMAL) for i in range(size)]
         self.pieces = pieces if pieces is not None else [None] * size
+
+    def get_state_id(self) -> str:
+        """Generates a string uniquely identifying this board's current
+        state. Usable as a cache key for BoardState objects."""
+        return ''.join(
+            '#' if square is None else
+                square.char + ('' if piece is None else f'{piece.team}{piece.char}')
+            for square, piece in zip(self.squares, self.pieces))
+
+    def get_state(self) -> 'BoardState':
+        return BoardState(self)
 
     def dump(self) -> Dict[str, Any]:
         def _dump_tuple(t):
@@ -328,6 +350,17 @@ class Board:
         square = self.get_square(x, y)
         return not square or square.is_solid
 
+    def move(self, x0: int, y0: int, x1: int, y1: int, dir: MoveDir = None):
+        piece = self.get_piece(x0, y0)
+        if piece.type == 'P':
+            if dir is not None:
+                pawn_dir = MOVE_DIRS_TO_PAWN_DIRS[dir]
+            else:
+                pawn_dir = piece.pawn_dir
+            piece = piece._replace(char=Piece.pawn_char(pawn_dir, 0))
+        self.set_piece(x0, y0, None)
+        self.set_piece(x1, y1, piece)
+
     def get_moves(self, x: int, y: int) -> Set[Move]:
 
         piece = self.get_piece(x, y)
@@ -469,3 +502,75 @@ class Board:
             check_line(dir, 1 + piece.pawn_type, CANNOT_TAKE)
 
         return moves
+
+
+class BoardState:
+    """Represents the board at a specific position.
+    For use by the AIs, e.g. when scoring a board position.
+    NOTE: Board.get_state_id() should be usable as a cache key for board
+    states.
+
+        >>> board = Board.from_file('boards/basic.json')
+        >>> board.move(4, 2, 4, 4)
+        >>> board.print()
+        %%%%%%%%%%%%
+        %##########%
+        %#RNBKQBNR#%
+        %#↡↡↡.↡↡↡↡#%
+        %#........#%
+        %#...↓....#%
+        %#........#%
+        %#........#%
+        %#↟↟↟↟↟↟↟↟#%
+        %#RNBKQBNR#%
+        %##########%
+        %%%%%%%%%%%%
+
+        >>> state = board.get_state()
+
+        Team 0 (i.e. South)'s available moves:
+        >>> print(' '.join(f'{p.piece.char}x{len(moves)}'
+        ...     for p, moves in state.pieces_and_moves_by_team[0] if moves))
+        ↟x2 ↟x2 ↟x2 ↟x2 ↟x2 ↟x2 ↟x2 ↟x2 Nx2 Nx2
+
+        Team 1 (i.e. North)'s available moves:
+        >>> print(' '.join(f'{p.piece.char}x{len(moves)}'
+        ...     for p, moves in state.pieces_and_moves_by_team[1] if moves))
+        Nx3 Bx5 Kx1 Qx4 Nx2 ↡x2 ↡x2 ↡x2 ↡x2 ↡x2 ↡x2 ↡x2 ↓x1
+
+        >>> for team, material in state.material_by_team.items():
+        ...     print(f'{team}: {dict(material)}')
+        1: {'R': 2, 'N': 2, 'B': 2, 'K': 1, 'Q': 1, 'P': 8}
+        0: {'P': 8, 'R': 2, 'N': 2, 'B': 2, 'K': 1, 'Q': 1}
+
+        >>> for team, mobility in state.mobility_by_team.items():
+        ...     print(f'{team}: {mobility}')
+        1: 30
+        0: 20
+
+    """
+
+    def __init__(self, board: Board):
+
+        self.state_id = board.get_state_id()
+
+        # self.pieces_and_moves_by_team[team] = (located_piece, moves)
+        self.pieces_and_moves_by_team = pieces_and_moves_by_team = defaultdict(list)
+        for piece in board.list_pieces():
+            piece_and_moves = (piece, board.get_moves(piece.x, piece.y))
+            pieces_and_moves_by_team[piece.piece.team].append(piece_and_moves)
+
+        def get_material(pieces_and_moves) -> Dict[PieceType, int]:
+            material = defaultdict(int)
+            for piece, moves in pieces_and_moves:
+                material[piece.piece.type] += 1
+            return material
+
+        # self.mobility_by_team[team] = count
+        self.mobility_by_team = mobility_by_team = {}
+        # self.material_by_team[team][piece] = count
+        self.material_by_team = material_by_team = {}
+        for team, pieces_and_moves in pieces_and_moves_by_team.items():
+            mobility_by_team[team] = sum(len(moves)
+                for pieces, moves in pieces_and_moves)
+            material_by_team[team] = get_material(pieces_and_moves)

@@ -392,15 +392,13 @@ class Editor:
                         dir for dir in range(8)
                         if Move(self.x, self.y, dir) in moves}
                     if move_dirs:
+                        move_dir = None
                         if piece.type == 'P':
                             if len(move_dirs) == 1:
                                 move_dir = next(iter(move_dirs))
-                                pawn_dir = MOVE_DIRS_TO_PAWN_DIRS[move_dir]
                             else:
                                 raise Exception(f"TODO: make user choose a dir!.. out of: {move_dirs}")
-                            piece = piece._replace(char=Piece.pawn_char(pawn_dir, 0))
-                        self.board.set_piece(x0, y0, None)
-                        self.board.set_piece(self.x, self.y, piece)
+                        self.board.move(x0, y0, self.x, self.y, move_dir)
                         unselect_piece()
                 else:
                     select_piece()

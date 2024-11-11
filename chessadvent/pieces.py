@@ -4,8 +4,19 @@ from typing import Dict, NamedTuple, Optional
 from .moves import MoveDir, MOVE_N, MOVE_S, MOVE_W, MOVE_E
 
 
+PieceType = str
 PIECE_TYPES = 'KQBNRP'
 PAWN_CHARS = '↑↓←→↟↡↞↠'
+
+
+PIECE_SCORES = {
+    'K': 100,
+    'Q': 10,
+    'B': 4,
+    'N': 4,
+    'R': 6,
+    'P': 1,
+}
 
 
 PawnDir = str
@@ -35,7 +46,7 @@ class Piece(NamedTuple):
         return PAWN_CHARS[i]
 
     @property
-    def type(self) -> str:
+    def type(self) -> PieceType:
         """Type of chess piece, one of PIECE_TYPES, e.g. 'K', 'P', etc"""
         char = self.char
         if char in PAWN_CHARS:
