@@ -21,6 +21,18 @@ CAN_TAKE = 1
 MUST_TAKE = 2
 
 
+class LocatedPiece(NamedTuple):
+    x: int
+    y: int
+    piece: Piece
+
+
+class LocatedMove(NamedTuple):
+    x: int
+    y: int
+    move: Move
+
+
 class Square(NamedTuple):
     char: str
 
@@ -166,6 +178,13 @@ class Board:
             return None
         return y * self.w + x
 
+    def list_pieces(self, team: int = None) -> List[LocatedPiece]:
+        return [
+            LocatedPiece(i % self.w, i // self.w, piece)
+            for i, piece in enumerate(self.pieces)
+            if piece is not None
+            and team is None or piece.team == team]
+
     def get_piece(self, x: int, y: int) -> Optional[Piece]:
         i = self.coords_to_index(x, y)
         return self.pieces[i] if i is not None else None
@@ -193,6 +212,22 @@ class Board:
     def get_moves(self, x: int, y: int) -> List[Move]:
         """Returns a list of moves, of length self.size, usable with
         self.get_coords_to_index."""
+
+        # !!! TODO !!!
+        # We need separate data structures here:
+        # * one we use internally, like an array of bools
+        #   moves[x][y][dir], where 0 <= dir < 4, marking valid moves.
+        #   We can return this one, e.g. so that it can be used by the
+        #   UI screen for a user to select a move.
+        # * we can convert the array of bools into a list of move-tuples,
+        #   (x, y, dir).
+        #   This is what the AI wants to know about.
+        #   Given a board and a move-tuple, can we produce a logical copy
+        #   of the board with that move having been made?..
+        #   I suppose we would just copy the "pieces" list and change it
+        #   in two places?..
+        #   And then we need a way to "score" a given board, from the
+        #   perspective of a given player/team.
 
         moves = [''] * self.size
 
@@ -317,3 +352,9 @@ class Board:
                     pawn_move(0, -2, move_dir, CANNOT_TAKE)
 
         return moves
+
+    def locate_moves(self, moves: List[moves]) -> List[LocatedMove]:
+        return [
+            LocatedMove(i % self.w, i // self.w, move)
+            for i, move in enumerate(moves)
+            if move]
