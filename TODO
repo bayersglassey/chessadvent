@@ -1,0 +1,11 @@
+
+TODO:
+
+    * Add "end of board squares", which allow pawns to turn into
+      queens etc
+
+
+SCENARIOS:
+
+    * A regular chess game... but with a third team's pawns
+      coming in from one side, out of holes in the wall
