@@ -373,7 +373,7 @@ class Editor:
             x0 = self.x
             y0 = self.y
             piece = self.board.get_piece(x0, y0)
-            moves = self.board.get_moves(x0, y0)
+            moves = piece and self.board.get_moves(x0, y0)
         def unselect_piece():
             nonlocal piece, moves
             piece = None

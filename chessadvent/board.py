@@ -116,12 +116,11 @@ class Square(NamedTuple):
         """If solid, pieces cannot go on top of this square"""
         return self.char != self.CHAR_NORMAL
 
-    @property
-    def is_bounce(self) -> bool:
-        return self.char in self._BOUNCES
-
-    def bounce(self, dir: MoveDir) -> MoveDir:
-        return self._BOUNCES[self.char][dir]
+    def get_bounce_dir(self, dir: MoveDir) -> Optional[MoveDir]:
+        bounces = self._BOUNCES.get(self.char)
+        if bounces is None:
+            return None
+        return bounces.get(dir)
 
 
 class Board:
@@ -438,11 +437,12 @@ class Board:
                 return None
             checked.add(move)
             square = self.squares[i]
-            if square and square.is_bounce:
+            bounce_dir = square and square.get_bounce_dir(dir)
+            if bounce_dir is not None:
                 # NOTE: this move is not itself valid, so we don't add to
                 # the "moves" set, but we do return a result which indicates
                 # how we should bounce
-                return CheckMoveResult(False, square.bounce(dir))
+                return CheckMoveResult(False, bounce_dir)
             if not square or square.is_solid:
                 # Can't move onto a solid square
                 return None
