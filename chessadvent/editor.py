@@ -176,7 +176,7 @@ class Editor:
                     char = piece.char
                     attrs |= color_pair_attr_from_team(piece.team)
                 else:
-                    char = square.char if square else '#'
+                    char = board.get_square_char(square, x, y)
                 if moves is not None:
                     for dir in range(8):
                         if Move(x, y, dir) in moves:

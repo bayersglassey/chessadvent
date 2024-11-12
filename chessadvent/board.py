@@ -27,6 +27,10 @@ from .moves import (
 )
 
 
+EDGE_CHAR = '%'
+EMPTY_SQUARE_CHAR = '╬'
+
+
 CanTake = int
 CANNOT_TAKE = 0
 CAN_TAKE = 1
@@ -61,6 +65,12 @@ class Square(NamedTuple):
     CHAR_PIPE = '|'
     BOUNCE_CHARS = CHAR_BACKSLASH + CHAR_SLASH + CHAR_HYPHEN + CHAR_PIPE
     CHARS = CHAR_NORMAL + CHAR_ENTER + CHAR_EXIT + BOUNCE_CHARS
+    RENDER_CHARS = {
+        CHAR_BACKSLASH: '╲',
+        CHAR_SLASH: '╱',
+        CHAR_HYPHEN: '─',
+        CHAR_PIPE: '│',
+    }
 
     _BOUNCES = {
         CHAR_BACKSLASH: {
@@ -120,10 +130,10 @@ class Board:
         >>> b = Board(w=4, h=4)
         >>> b.print()
         %%%%%%
-        %....%
-        %....%
-        %....%
-        %....%
+        % ░ ░%
+        %░ ░ %
+        % ░ ░%
+        %░ ░ %
         %%%%%%
 
         >>> data = b.dump()
@@ -142,10 +152,10 @@ class Board:
         >>> b.set_piece(1, 2, Piece('K'))
         >>> b.print()
         %%%%%%
-        %....%
-        %..#.%
-        %.K..%
-        %....%
+        % ░ ░%
+        %░ ╬ %
+        % K ░%
+        %░ ░ %
         %%%%%%
 
         >>> b.get_state_id()
@@ -162,20 +172,20 @@ class Board:
         >>> b.scroll(1, 1)
         >>> b.print()
         %%%%%%
-        %....%
-        %....%
-        %...#%
-        %..K.%
+        % ░ ░%
+        %░ ░ %
+        % ░ ╬%
+        %░ K %
         %%%%%%
 
         >>> b.resize(1, 1)
         >>> b.print()
         %%%%%%%
-        %....#%
-        %....#%
-        %...##%
-        %..K.#%
-        %#####%
+        % ░ ░╬%
+        %░ ░ ╬%
+        % ░ ╬╬%
+        %░ K ╬%
+        %╬╬╬╬╬%
         %%%%%%%
 
         >>> b.list_pieces()
@@ -253,8 +263,18 @@ class Board:
     def size(self):
         return self.w * self.h
 
+    @staticmethod
+    def get_square_char(square: Square, x: int, y: int) -> str:
+        if square:
+            char = square.char
+            if char == '.':
+                return '░' if x % 2 ^ y % 2 else ' '
+            else:
+                return Square.RENDER_CHARS.get(char, char)
+        else:
+            return EMPTY_SQUARE_CHAR
+
     def render_simple(self) -> str:
-        EDGE_CHAR = '%'
         s = EDGE_CHAR * (self.w + 2)
         i = 0
         for y in range(self.h):
@@ -264,10 +284,8 @@ class Board:
                 piece = self.pieces[i]
                 if piece:
                     s += piece.char
-                elif square:
-                    s += square.char
                 else:
-                    s += '#'
+                    s += self.get_square_char(square, x, y)
                 i += 1
             s += EDGE_CHAR
         s += '\n' + EDGE_CHAR * (self.w + 2)
@@ -536,16 +554,16 @@ class BoardState:
         >>> board.move(4, 2, 4, 4)
         >>> board.print()
         %%%%%%%%%%%%
-        %##########%
-        %#RNBKQBNR#%
-        %#↡↡↡.↡↡↡↡#%
-        %#........#%
-        %#...↓....#%
-        %#........#%
-        %#........#%
-        %#↟↟↟↟↟↟↟↟#%
-        %#RNBKQBNR#%
-        %##########%
+        %╬╬╬╬╬╬╬╬╬╬%
+        %╬RNBKQBNR╬%
+        %╬↡↡↡ ↡↡↡↡╬%
+        %╬ ░ ░ ░ ░╬%
+        %╬░ ░↓░ ░ ╬%
+        %╬ ░ ░ ░ ░╬%
+        %╬░ ░ ░ ░ ╬%
+        %╬↟↟↟↟↟↟↟↟╬%
+        %╬RNBKQBNR╬%
+        %╬╬╬╬╬╬╬╬╬╬%
         %%%%%%%%%%%%
 
         >>> state = board.get_state()
