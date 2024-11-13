@@ -613,3 +613,23 @@ class BoardState:
         self.material_by_team = material_by_team = {}
         for team, pieces_and_moves in pieces_and_moves_by_team.items():
             material_by_team[team] = get_material(pieces_and_moves)
+
+    @cached_property
+    def teams_with_pieces(self) -> Set[Team]:
+        return {team
+            for team, pieces_and_moves in self.pieces_and_moves_by_team.items()
+            if pieces_and_moves}
+
+    @cached_property
+    def teams_with_moves(self) -> Set[Team]:
+        return {team
+            for team, pieces_and_moves in self.pieces_and_moves_by_team.items()
+            if any(moves for pieces, moves in pieces_and_moves)}
+
+    def get_next_team_with_moves(self, team: Team) -> Optional[Team]:
+        teams_with_moves = self.teams_with_moves
+        for i in range(N_TEAMS):
+            new_team = (team + 1 + i) % N_TEAMS
+            if new_team in teams_with_moves:
+                return new_team
+        return None

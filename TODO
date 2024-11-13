@@ -1,10 +1,13 @@
 
 TODO:
 
-    [ ] Add "end of board squares", which allow pawns to turn into
-        queens etc
-
     [X] Need a way to see black/red board squares
+
+    [X] Add a "game" CLI (or game "mode" to editor?..) where you can
+        only move your pieces, AIs move theirs, and you take turns.
+
+    [X] Add a way to see which moves a given piece could make, just by
+        hovering over it.
 
     [ ] Need undo/redo in editor
 
@@ -12,10 +15,21 @@ TODO:
         Pick a move from the set of all moves within e.g. 0.1 score of
         the best move.
 
+    [ ] Add a way to see which moves the AIs just made.
+
+    [ ] Add "end of board squares", which allow pawns to turn into
+        queens etc
+
     [ ] MAYBE: add pawns which can go back and forth??? ↔ ↕
+
+    [ ] Start building up a number of saved boards, and then think
+        about how to connect them up into a series of "levels".
+
+    [ ] When you take a team's king (all of a team's kings?..) you get
+        its pieces.
 
 
 SCENARIOS:
 
     [ ] A regular chess game... but with a third team's pawns
-      coming in from one side, out of holes in the wall
+        coming in from one side, out of holes in the wall

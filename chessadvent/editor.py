@@ -4,7 +4,7 @@ import json
 import curses
 import traceback
 from argparse import ArgumentParser, Namespace
-from typing import Dict, List, Optional
+from typing import Dict, List, Set, Tuple, Optional
 
 from .pieces import (
     Piece,
@@ -163,7 +163,7 @@ class Editor:
             return False
         return True
 
-    def render_board(self, *, moves: Optional[List[Move]] = None):
+    def render_board(self, *, highlights: Set[Tuple[int, int]] = None):
         screen = self.screen
         board = self.board
         i = 0
@@ -177,11 +177,8 @@ class Editor:
                     attrs |= color_pair_attr_from_team(piece.team)
                 else:
                     char = board.get_square_char(square, x, y)
-                if moves is not None:
-                    for dir in range(8):
-                        if Move(x, y, dir) in moves:
-                            attrs |= curses.A_REVERSE
-                            break
+                if highlights and (x, y) in highlights:
+                    attrs |= curses.A_REVERSE
                 screen.addch(y, x, char, attrs)
                 i += 1
 
@@ -274,8 +271,10 @@ class Editor:
             elif key == ord('a'):
                 team = self.piece.team
                 self.make_ai_move(team)
-                team = (team + 1) % N_TEAMS
-                self.piece = self.piece._replace(team=team)
+                state = board.get_state()
+                new_team = state.get_next_team_with_moves(team)
+                if new_team is not None:
+                    self.piece = self.piece._replace(team=new_team)
             elif key == curses.KEY_F3:
                 self.resize_board()
             elif key == curses.KEY_F5:
@@ -366,37 +365,49 @@ class Editor:
                     board.resize(1, 0)
 
     def move_pieces(self):
+        ai_on = False
+        screen = self.screen
+        board = self.board
+        my_team = self.piece.team
 
-        x0, y0, piece, moves = None, None, None, None
+        x0, y0, selected_piece = None, None, None
         def select_piece():
-            nonlocal x0, y0, piece, moves
+            nonlocal x0, y0, selected_piece
             x0 = self.x
             y0 = self.y
-            piece = self.board.get_piece(x0, y0)
-            moves = piece and self.board.get_moves(x0, y0)
+            selected_piece = self.board.get_piece(x0, y0)
+            if selected_piece and ai_on and selected_piece.team != my_team:
+                selected_piece = None
         def unselect_piece():
-            nonlocal piece, moves
-            piece = None
-            moves = None
+            nonlocal selected_piece
+            selected_piece = None
 
         while True:
-            screen = self.screen
-            board = self.board
             message = '\n'.join([
                 "Arrow keys to move cursor",
-                f"Enter to {'move piece' if piece else 'select piece to move'}",
-                "A to let AI for team 1 make a move",
+                f"Backspace to {'turn off' if ai_on else 'turn on'} AI players",
+                f"Enter to {'move piece' if selected_piece else 'select piece to move'}",
                 "M to exit piece-moving mode",
                 "F1 to quit",
             ])
 
+            highlights = None
+            hx, hy = (x0, y0) if selected_piece else (self.x, self.y)
+            highlight_piece = board.get_piece(hx, hy)
+            if highlight_piece:
+                highlight_moves = board.get_moves(hx, hy)
+                highlights = {(move.x, move.y) for move in highlight_moves}
+
             screen.clear()
-            self.render_board(moves=moves)
-            if piece:
+            self.render_board(highlights=highlights)
+            if selected_piece:
                 screen.addstr(board.h + 1, 0, "Moving piece: ")
-                screen.addstr(piece.char, color_pair_attr_from_team(piece.team))
+                screen.addstr(selected_piece.char, color_pair_attr_from_team(selected_piece.team))
             else:
                 screen.addstr(board.h + 1, 0, "No piece selected!")
+                if ai_on:
+                    screen.addstr(" You are team: ")
+                    screen.addstr("K", color_pair_attr_from_team(my_team))
             screen.addstr(board.h + 3, 0, message)
             screen.move(self.y, self.x)
             screen.refresh()
@@ -404,25 +415,30 @@ class Editor:
             if key == curses.KEY_F1:
                 raise QuitEditor
             elif key == ord('\n'):
-                if piece:
+                if selected_piece:
+                    moves = board.get_moves(x0, y0)
                     move_dirs = {
                         dir for dir in range(8)
                         if Move(self.x, self.y, dir) in moves}
                     if move_dirs:
                         move_dir = None
-                        if piece.type == 'P':
+                        if selected_piece.type == 'P':
                             if len(move_dirs) == 1:
                                 move_dir = next(iter(move_dirs))
                             else:
                                 raise Exception(f"TODO: make user choose a dir!.. out of: {move_dirs}")
                         self.board.move(x0, y0, self.x, self.y, move_dir)
                         unselect_piece()
+                        if ai_on:
+                            for i in range(N_TEAMS - 1):
+                                ai_team = (my_team + 1 + i) % N_TEAMS
+                                self.make_ai_move(ai_team)
                 else:
                     select_piece()
-            elif key == ord('a'):
-                self.make_ai_move(1)
+            elif key == curses.KEY_BACKSPACE:
+                ai_on = not ai_on
             elif key == ord('m'):
-                if piece:
+                if selected_piece:
                     unselect_piece()
                 else:
                     return
