@@ -19,6 +19,9 @@ from .board import Board, Square
 from .ai import AI
 
 
+MAX_UNDO_STACK_SIZE = 100
+
+
 KEYS_TO_PIECE_TYPES: Dict[int, str] = {ord(t.lower()): t for t in PIECE_TYPES}
 KEYS_TO_PAWN_DIRS: Dict[int, PawnDir] = {
     curses.KEY_UP: 'u',
@@ -76,11 +79,44 @@ class Editor:
         self.pawn_dir = 'u'
 
         self.filename = args.filename or 'testboard.json'
-        self.board = Board(w=args.width, h=args.height)
         if args.load:
             self.load_board()
+        else:
+            self.board = Board(w=args.width, h=args.height)
+            self._init_stacks()
 
         self.ais = {team: AI(team) for team in range(N_TEAMS)}
+
+    def _init_stacks(self):
+        self.undo_stack = []
+        self.redo_stack = []
+
+    def undo(self):
+        if self.undo_stack:
+            self.redo_stack.append(self.board)
+            self.board = self.undo_stack.pop()
+            self._correct_for_modified_board()
+
+    def redo(self):
+        if self.redo_stack:
+            self.undo_stack.append(self.board)
+            self.board = self.redo_stack.pop()
+            self._correct_for_modified_board()
+
+    def _correct_for_modified_board(self):
+        """Should be called after modifying self.board"""
+        if self.x >= self.board.w:
+            self.x = self.board.w - 1
+        if self.y >= self.board.h:
+            self.y = self.board.h - 1
+
+    def push_board(self):
+        """Should be called before modifying the board in any way, so that
+        the modification can be undone"""
+        if len(self.undo_stack) >= MAX_UNDO_STACK_SIZE:
+            self.undo_stack.pop(0)
+        self.undo_stack.append(self.board.copy())
+        self.redo_stack.clear()
 
     def select_piece(self):
         # A screen of the UI which is specifically for selecting a piece
@@ -220,6 +256,7 @@ class Editor:
     def load_board(self):
         try:
             self.board = Board.from_file(self.filename)
+            self._init_stacks()
             self.x = 0
             self.y = 0
         except Exception as ex:
@@ -238,17 +275,16 @@ class Editor:
             board = self.board
             message = '\n'.join([
                 "Arrow keys to move cursor",
-                "Backspace to select a piece (i.e. rotate pawn)",
+                "Backspace to rotate pawn",
                 "Enter to add/remove piece",
                 "Space to add/remove squares",
             ] + self._get_piece_key_message_lines() + [
                 "S to select the piece at cursor",
                 "M to enter piece-moving mode",
-                "A to let AI make a move",
+                "Z/Y to undo/redo",
                 "F3 to resize/scroll board",
-                f"F5 to save board (to {self.filename})",
+                f"F5/F7 to save/load board (to/from {self.filename})",
                 "F6 to change filename",
-                f"F7 to load board (to {self.filename})",
                 "F1 to quit",
             ])
 
@@ -262,20 +298,19 @@ class Editor:
             key = screen.getch()
             if key == curses.KEY_F1:
                 raise QuitEditor
+            elif key == ord('z'):
+                self.undo()
+            elif key == ord('y'):
+                self.redo()
             elif key == ord('s'):
                 piece = board.get_piece(self.x, self.y)
                 if piece:
                     self.piece = piece
             elif key == ord('m'):
+                self.push_board()
                 self.move_pieces()
-            elif key == ord('a'):
-                team = self.piece.team
-                self.make_ai_move(team)
-                state = board.get_state()
-                new_team = state.get_next_team_with_moves(team)
-                if new_team is not None:
-                    self.piece = self.piece._replace(team=new_team)
             elif key == curses.KEY_F3:
+                self.push_board()
                 self.resize_board()
             elif key == curses.KEY_F5:
                 self.save_board()
@@ -294,6 +329,7 @@ class Editor:
                 self.select_piece()
             elif key in KEYS_TO_SQUARE_CHARS:
                 # Add/remove square
+                self.push_board()
                 char = KEYS_TO_SQUARE_CHARS[key]
                 square = board.get_square(self.x, self.y)
                 if square:
@@ -308,6 +344,7 @@ class Editor:
                     board.set_piece(self.x, self.y, None)
             elif key == ord('\n'):
                 # Add/remove piece
+                self.push_board()
                 if not board.is_solid_at(self.x, self.y):
                     piece = board.get_piece(self.x, self.y)
                     if piece == self.piece:
@@ -348,21 +385,25 @@ class Editor:
                     board.scroll(0, -1)
                 elif board.h > 0:
                     board.resize(0, -1)
+                    self._correct_for_modified_board()
             elif key == curses.KEY_DOWN:
                 if scrolling:
                     board.scroll(0, 1)
                 else:
                     board.resize(0, 1)
+                    self._correct_for_modified_board()
             elif key == curses.KEY_LEFT:
                 if scrolling:
                     board.scroll(-1, 0)
                 elif board.w > 0:
                     board.resize(-1, 0)
+                    self._correct_for_modified_board()
             elif key == curses.KEY_RIGHT:
                 if scrolling:
                     board.scroll(1, 0)
                 else:
                     board.resize(1, 0)
+                    self._correct_for_modified_board()
 
     def move_pieces(self):
         ai_on = False

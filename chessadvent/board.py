@@ -210,6 +210,16 @@ class Board:
             Square(Square.CHAR_NORMAL) for i in range(size)]
         self.pieces = pieces if pieces is not None else [None] * size
 
+    def copy(self) -> 'Board':
+        """Create a completely independent copy of self, so that either
+        board can be modified in any way without affecting the other"""
+        return Board(
+            w=self.w,
+            h=self.h,
+            squares=self.squares.copy(),
+            pieces=self.pieces.copy(),
+        )
+
     def copy_for_trying_out_moves(self) -> 'Board':
         """Create a copy of self, for trying out moves, e.g. to see how a
         board state's score will be changed by making some move"""
@@ -217,8 +227,6 @@ class Board:
             w=self.w,
             h=self.h,
             squares=self.squares,
-            # We need to copy self.pieces, since that's what might be
-            # affected by moves being made
             pieces=self.pieces.copy(),
         )
 
