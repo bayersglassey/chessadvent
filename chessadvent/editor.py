@@ -385,6 +385,7 @@ class Editor:
             message = '\n'.join([
                 "Arrow keys to move cursor",
                 f"Enter to {'move piece' if piece else 'select piece to move'}",
+                "A to let AI for team 1 make a move",
                 "M to exit piece-moving mode",
                 "F1 to quit",
             ])
