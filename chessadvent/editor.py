@@ -79,9 +79,11 @@ class Editor:
         self.pawn_dir = 'u'
 
         self.filename = args.filename or 'testboard.json'
+        self.board = None
         if args.load:
+            # NOTE: may fail, leaving self.board as None
             self.load_board()
-        else:
+        if self.board is None:
             self.board = Board(w=args.width, h=args.height)
             self._init_stacks()
 

@@ -15,6 +15,8 @@ TODO:
         Pick a move from the set of all moves within e.g. 0.1 score of
         the best move.
 
+    [ ] Make the AI see into the future.
+
     [ ] Add a way to see which moves the AIs just made.
 
     [ ] Add "end of board squares", which allow pawns to turn into
@@ -25,8 +27,8 @@ TODO:
     [ ] Start building up a number of saved boards, and then think
         about how to connect them up into a series of "levels".
 
-    [ ] When you take a team's king (all of a team's kings?..) you get
-        its pieces.
+    [ ] When you take a team's king (errrr, all of a team's kings?..)
+        you get its pieces.
 
 
 SCENARIOS:
