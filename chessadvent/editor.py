@@ -78,6 +78,9 @@ class Editor:
         self.piece = Piece('K')
         self.pawn_dir = 'u'
 
+        # How far into the future the AI should look
+        self.future_sight = 0 #1 * N_TEAMS
+
         self.filename = args.filename or 'testboard.json'
         self.board = None
         if args.load:
@@ -266,7 +269,7 @@ class Editor:
 
     def make_ai_move(self, team: Team):
         ai = self.ais[team]
-        next_moves = ai.find_next_moves(self.board)
+        next_moves = ai.find_next_moves(self.board, self.future_sight)
         if next_moves:
             next_move, score = next_moves[0]
             self.board.apply(next_move)

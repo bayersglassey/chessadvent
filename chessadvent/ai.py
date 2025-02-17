@@ -1,4 +1,4 @@
-from typing import List, Tuple, Set
+from typing import List, Tuple, Set, Optional
 
 from .pieces import Team, N_TEAMS, PIECE_SCORES
 from .board import Board, BoardState, PieceMove
@@ -75,6 +75,23 @@ class AI:
         ↡ (5, 4) 0.76
         Q (2, 4) 0.7
 
+        Let's make the move it considers to be the best:
+        >>> move, score = next_moves[0]
+        >>> board.apply(move)
+        >>> board.print()
+        %%%%%%%%%%%%
+        %╬╬╬╬╬╬╬╬╬╬%
+        %╬RNBK BNR╬%
+        %╬↡↡↡ ↡↡↡↡╬%
+        %╬ ░ ░ ░ ░╬%
+        %╬░ ░↓░ ░ ╬%
+        %╬Q░ ░ ░ ░╬%
+        %╬░ ░ ░ ░ ╬%
+        %╬↟↟↟↟↟↟↟↟╬%
+        %╬RNBKQBNR╬%
+        %╬╬╬╬╬╬╬╬╬╬%
+        %%%%%%%%%%%%
+
     """
 
     piece_scores = PIECE_SCORES
@@ -120,37 +137,68 @@ class AI:
         mobility_score = moves_score + stuck_pieces_score
         return material_score + mobility_score
 
-    def find_next_moves(self, board: Board, *, for_piece: Tuple[int, int] = None) -> List[Tuple[PieceMove, Score]]:
+    def find_next_moves(
+            self,
+            board: Board,
+            future_sight: int = 0,
+            *,
+            team: Team = None,
+            allow_the_empty_move: bool = False,
+            ) -> List[Tuple[PieceMove, Score]]:
         """Find our next possible moves for the given board, sorted by score
-        (highest first)"""
+        (highest first), looking future_sight + 1 moves into the future"""
 
-        state = board.get_state()
+        # This function calls itself recursively, cycling through the teams,
+        # so that the AI can understand what its opponents' best moves might
+        # be.
+        if team is None:
+            team = self.team
 
-        if self.team not in state.pieces_and_moves_by_team:
-            # We have no valid moves!
-            return []
-
-        pieces_and_moves = state.pieces_and_moves_by_team[self.team]
-        if for_piece is not None:
-            # Filter pieces_and_moves so it only contains one entry, for
-            # the indicated piece
-            x, y = for_piece
-            for piece, moves in pieces_and_moves:
-                if piece.x == x and piece.y == y:
-                    break
+        def get_board_score(piece_move: Optional[PieceMove]) -> float:
+            """Returns the score for the board obtained by applying the given
+            PieceMove, or just the score for the current board, but in either
+            case factors future moves by all teams into the score."""
+            if piece_move is not None:
+                new_board = board.copy_for_trying_out_moves()
+                new_board.apply(piece_move)
             else:
-                raise Exception(f"No piece at {(x, y)}!")
-            pieces_and_moves = [(piece, moves)]
+                new_board = board
+            new_state = new_board.get_state()
+            if future_sight > 0:
+                future_next_moves = self.find_next_moves(
+                    new_board,
+                    future_sight - 1,
+                    team=(team + 1) % N_TEAMS,
+                    allow_the_empty_move=True,
+                )
+                future_move, future_move_score = future_next_moves[0]
+                return future_move_score
+            else:
+                return self.get_state_score(new_state)
 
+        # Find all valid moves from this board state
+        state = board.get_state()
+        pieces_and_moves = state.pieces_and_moves_by_team.get(team)
+        if not pieces_and_moves:
+            # We have no valid moves!
+            if allow_the_empty_move:
+                # There are no valid moves, but we still want to return
+                # the score for this position.
+                score = get_board_score(None)
+                return [(None, score)]
+            else:
+                return []
+
+        # For each valid move, make a copy of the board, make the move on
+        # that board, then evaluate the resulting position and assign its
+        # score to that move
         moves_and_scores = []
         for piece, moves in pieces_and_moves:
             for move in moves:
-                new_board = board.copy_for_trying_out_moves()
                 piece_move = PieceMove(piece, move)
-                new_board.apply(piece_move)
-                new_state = new_board.get_state()
-                score = self.get_state_score(new_state)
+                score = get_board_score(piece_move)
                 moves_and_scores.append((piece_move, score))
 
+        # Sort moves by score, best to worst
         moves_and_scores.sort(key=lambda t: t[1], reverse=True)
         return moves_and_scores
