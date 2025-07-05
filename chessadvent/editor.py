@@ -3,7 +3,7 @@
 import json
 import curses
 import traceback
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, Namespace
 from typing import Dict, List, Set, Tuple, Optional
 
 from .pieces import (
@@ -16,7 +16,11 @@ from .pieces import (
 )
 from .moves import Move
 from .board import Board, Square
-from .ai import AI
+from .ai import AI_TYPES, DEFAULT_AI_TYPE
+
+
+#DEFAULT_BOARD_FILENAME = 'testboard.json'
+DEFAULT_BOARD_FILENAME = 'boards/basic.json'
 
 
 MAX_UNDO_STACK_SIZE = 100
@@ -54,11 +58,15 @@ def color_pair_attr_from_team(team: Team) -> int:
 
 
 def parse_args():
-    parser = ArgumentParser()
+    # NOTE: for me, on python 3.8, ArgumentDefaultsHelpFormatter isn't
+    # doing *aaanything*. wtf dude
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--width', default=8)
     parser.add_argument('--height', default=8)
-    parser.add_argument('-f', '--filename', default=None)
+    parser.add_argument('-f', '--filename', default=DEFAULT_BOARD_FILENAME)
     parser.add_argument('-l', '--load', default=False, action='store_true')
+    parser.add_argument('-p', '--play', default=False, action='store_true')
+    parser.add_argument('-A', '--ai', choices=AI_TYPES, default=DEFAULT_AI_TYPE)
     return parser.parse_args()
 
 
@@ -78,10 +86,7 @@ class Editor:
         self.piece = Piece('K')
         self.pawn_dir = 'u'
 
-        # How far into the future the AI should look
-        self.future_sight = 0 #1 * N_TEAMS
-
-        self.filename = args.filename or 'testboard.json'
+        self.filename = args.filename
         self.board = None
         if args.load:
             # NOTE: may fail, leaving self.board as None
@@ -90,7 +95,9 @@ class Editor:
             self.board = Board(w=args.width, h=args.height)
             self._init_stacks()
 
-        self.ais = {team: AI(team) for team in range(N_TEAMS)}
+        ai_class = AI_TYPES[args.ai]
+        self.ais = {team: ai_class(team)
+            for team in range(N_TEAMS)}
 
     def _init_stacks(self):
         self.undo_stack = []
@@ -269,9 +276,9 @@ class Editor:
 
     def make_ai_move(self, team: Team):
         ai = self.ais[team]
-        next_moves = ai.find_next_moves(self.board, self.future_sight)
-        if next_moves:
-            next_move, score = next_moves[0]
+        next_move = ai.find_next_move(self.board)
+        if next_move:
+            next_move, score = next_move
             self.board.apply(next_move)
 
     def view_board(self):
@@ -410,8 +417,8 @@ class Editor:
                     board.resize(1, 0)
                     self._correct_for_modified_board()
 
-    def move_pieces(self):
-        ai_on = False
+    def move_pieces(self, *, ai_on: bool = False):
+        ai_on = ai_on
         screen = self.screen
         board = self.board
         my_team = self.piece.team
@@ -503,7 +510,10 @@ def main(screen: curses.window, args: Namespace):
 
     editor = Editor(args=args, screen=screen)
     try:
-        editor.view_board()
+        if args.play:
+            editor.move_pieces(ai_on=True)
+        else:
+            editor.view_board()
     except QuitEditor:
         pass
 

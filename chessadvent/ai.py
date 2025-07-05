@@ -17,6 +17,24 @@ Score = float
 
 
 class AI:
+
+    def find_next_move(
+            self,
+            board: Board,
+            ) -> Optional[Tuple[PieceMove, Score]]:
+        next_moves = self.find_next_moves(board)
+        return next_moves[0] if next_moves else None
+
+    def find_next_moves(
+            self,
+            board: Board,
+            ) -> List[Tuple[PieceMove, Score]]:
+        """Find our next possible moves for the given board, sorted by score
+        (highest first)"""
+        raise NotImplementedError
+
+
+class FutureSeekerAI(AI):
     """
 
         >>> board = Board.from_file('boards/basic.json')
@@ -35,7 +53,7 @@ class AI:
         %%%%%%%%%%%%
 
         An AI for team 1, i.e. team North in the board above.
-        >>> ai = AI(1)
+        >>> ai = FutureSeekerAI(1)
 
         The AI considers this board state to be neutral.
         >>> state = board.get_state()
@@ -99,6 +117,9 @@ class AI:
     def __init__(self, team: Team):
         self.team = team
 
+        # How far into the future the AI should look
+        self.future_sight = 0 #1 * N_TEAMS
+
         # How much we like for each team to have material
         self.material_weight_by_team = {
             other_team: 1 if other_team == team else -1
@@ -140,7 +161,15 @@ class AI:
     def find_next_moves(
             self,
             board: Board,
-            future_sight: int = 0,
+            ) -> List[Tuple[PieceMove, Score]]:
+        """Find our next possible moves for the given board, sorted by score
+        (highest first)"""
+        return self._find_next_moves_future(board)
+
+    def _find_next_moves_future(
+            self,
+            board: Board,
+            future_sight: int = None,
             *,
             team: Team = None,
             allow_the_empty_move: bool = False,
@@ -153,6 +182,8 @@ class AI:
         # be.
         if team is None:
             team = self.team
+        if future_sight is None:
+            future_sight = self.future_sight
 
         def get_board_score(piece_move: Optional[PieceMove]) -> float:
             """Returns the score for the board obtained by applying the given
@@ -165,7 +196,7 @@ class AI:
                 new_board = board
             new_state = new_board.get_state()
             if future_sight > 0:
-                future_next_moves = self.find_next_moves(
+                future_next_moves = self._find_next_moves_future(
                     new_board,
                     future_sight - 1,
                     team=(team + 1) % N_TEAMS,
@@ -202,3 +233,9 @@ class AI:
         # Sort moves by score, best to worst
         moves_and_scores.sort(key=lambda t: t[1], reverse=True)
         return moves_and_scores
+
+
+AI_TYPES = {
+    'futureseeker': FutureSeekerAI,
+}
+DEFAULT_AI_TYPE = next(iter(AI_TYPES))
