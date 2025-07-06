@@ -17,6 +17,7 @@ Score = float
 
 
 class AI:
+    """Base class for finding good chess moves"""
 
     def find_next_move(
             self,
@@ -34,8 +35,37 @@ class AI:
         raise NotImplementedError
 
 
-class FutureSeekerAI(AI):
+class InfluenceTrackerAI(AI):
+    """Finds good moves by keeping track of how many pieces are "influencing",
+    i.e. aimed at, each square on the board.
+
+        >>> board = Board.from_file('boards/basic.json')
+        >>> board.print()
+        %%%%%%%%%%%%
+        %╬╬╬╬╬╬╬╬╬╬%
+        %╬RNBKQBNR╬%
+        %╬↡↡↡↡↡↡↡↡╬%
+        %╬ ░ ░ ░ ░╬%
+        %╬░ ░ ░ ░ ╬%
+        %╬ ░ ░ ░ ░╬%
+        %╬░ ░ ░ ░ ╬%
+        %╬↟↟↟↟↟↟↟↟╬%
+        %╬RNBKQBNR╬%
+        %╬╬╬╬╬╬╬╬╬╬%
+        %%%%%%%%%%%%
+
+        An AI for team 1, i.e. team North in the board above.
+        >>> ai = InfluenceTrackerAI(1)
+
     """
+
+    def __init__(self, team: Team):
+        self.team = team
+
+
+class FutureSeekerAI(AI):
+    """Finds good moves by recursively trying all possible moves & scoring
+    the resulting positions.
 
         >>> board = Board.from_file('boards/basic.json')
         >>> board.print()
@@ -237,5 +267,6 @@ class FutureSeekerAI(AI):
 
 AI_TYPES = {
     'futureseeker': FutureSeekerAI,
+    'influencetracker': InfluenceTrackerAI,
 }
 DEFAULT_AI_TYPE = next(iter(AI_TYPES))
